@@ -1,0 +1,592 @@
+"use client";
+
+import { useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import {
+  ChevronRight, ChevronLeft, ChevronDown, Phone, CreditCard, FileText,
+  Calendar, Star, Ban, Mail, MapPin, Pencil, Check, X as XIcon, CheckCircle2, FileSignature,
+} from "lucide-react";
+import { Avatar, Badge, HijriDatePicker, Button, Select } from "@/components/ui";
+import { useAdmin } from "@/contexts/AdminContext";
+import { CLIENTS, type ClientProfile, type ClientContract } from "@/lib/data";
+import { OtpVerificationPanel } from "@/components/employee/OtpVerification";
+
+type EditableFields = Pick<ClientProfile,
+  "name" | "nameAr" | "phone" | "email" | "idType" | "idNumber" | "idExpiryDate" |
+  "birthDate" | "nationality" | "licenseNumber" | "licenseExpiryDate" |
+  "personAddress" | "idCopyNumber" | "licenseIssuePlace" | "borderNumber"
+>;
+
+// Required field set per identity type, mirroring the new-contract flow's
+// identity form so editing a customer's profile shows the same fields.
+type IdentityFieldDef = {
+  key: string; labelEn: string; labelAr: string; required: boolean;
+  type: "text" | "date" | "email" | "hijri"; value: string; onChange: (v: string) => void;
+};
+
+const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
+
+const HISTORY_BADGE: Record<ClientContract["status"], { variant: "success" | "warning" | "neutral" | "danger" | "info"; label: [string, string] }> = {
+  active: { variant: "info", label: ["Active", "نشط"] },
+  pending: { variant: "warning", label: ["Pending", "معلق"] },
+  completed: { variant: "success", label: ["Completed", "مكتمل"] },
+  expired: { variant: "neutral", label: ["Expired", "منتهي"] },
+  cancelled: { variant: "danger", label: ["Cancelled", "ملغي"] },
+};
+
+const DEBT_BADGE: Record<"unpaid" | "overdue" | "paid", { variant: "success" | "warning" | "danger"; label: [string, string] }> = {
+  unpaid: { variant: "warning", label: ["Unpaid", "غير مسدد"] },
+  overdue: { variant: "danger", label: ["Overdue", "متأخر السداد"] },
+  paid: { variant: "success", label: ["Paid", "مسدد"] },
+};
+
+export default function CustomerDetailPage() {
+  const { dir } = useAdmin();
+  const ar = dir === "rtl";
+  const params = useParams();
+  const id = params.id as string;
+
+  const initialClient = CLIENTS.find((c) => c.id === id) ?? null;
+  const [client, setClient] = useState<ClientProfile | null>(initialClient);
+  const [expandedContract, setExpandedContract] = useState<string | null>(null);
+  const [phoneVerified, setPhoneVerified] = useState(initialClient?.kycStatus === "verified");
+  const [emailVerified, setEmailVerified] = useState(initialClient?.kycStatus === "verified");
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<EditableFields | null>(null);
+  const [savedToast, setSavedToast] = useState(false);
+
+  if (!client) {
+    return (
+      <div className="py-24 text-center">
+        <div className="mk-display mb-3">🪪</div>
+        <div className="mk-body mb-2 text-mk-ink-900">{T("Customer not found", "العميل غير موجود", ar)}</div>
+        <Link href="/employee/customer" className="mk-body-sm text-mk-blue-500 no-underline">{T("← Back", "→ العودة", ar)}</Link>
+      </div>
+    );
+  }
+
+  function startEditing() {
+    if (!client) return;
+    setDraft({
+      name: client.name,
+      nameAr: client.nameAr,
+      phone: client.phone,
+      email: client.email ?? "",
+      idType: client.idType,
+      idNumber: client.idNumber,
+      idExpiryDate: client.idExpiryDate ?? "",
+      birthDate: client.birthDate ?? (client.hijriBirthDate ? String(client.hijriBirthDate) : ""),
+      nationality: client.nationality ?? "",
+      licenseNumber: client.licenseNumber,
+      licenseExpiryDate: client.licenseExpiryDate ?? "",
+      personAddress: client.personAddress ?? "",
+      idCopyNumber: client.idCopyNumber ?? "",
+      licenseIssuePlace: client.licenseIssuePlace ?? "",
+      borderNumber: client.borderNumber ?? "",
+    });
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraft(null);
+  }
+
+  function saveEditing() {
+    if (!draft) return;
+    const isSaudi = draft.idType === "Saudi ID";
+    setClient((prev) => prev && {
+      ...prev,
+      ...draft,
+      hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
+      birthDate: isSaudi ? undefined : draft.birthDate,
+    });
+    setEditing(false);
+    setDraft(null);
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 2200);
+  }
+
+  function updateDraft<K extends keyof EditableFields>(key: K, value: EditableFields[K]) {
+    setDraft((prev) => prev && { ...prev, [key]: value });
+  }
+
+  // Required field set per identity type — mirrors the new-contract flow's
+  // per-type identity form so editing here uses the exact same fields.
+  function identityFieldsFor(d: EditableFields): IdentityFieldDef[] {
+    const addressField: IdentityFieldDef = { key: "address", labelEn: "Address", labelAr: "العنوان", required: true, type: "text", value: d.personAddress ?? "", onChange: (v) => updateDraft("personAddress", v) };
+    const idCopyNumberField: IdentityFieldDef = { key: "idCopyNumber", labelEn: "ID Copy No.", labelAr: "رقم نسخة الهوية", required: true, type: "text", value: d.idCopyNumber ?? "", onChange: (v) => updateDraft("idCopyNumber", v) };
+
+    if (d.idType === "Saudi ID" || d.idType === "Iqama") {
+      return [
+        { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
+        addressField,
+        {
+          key: "birthDate",
+          labelEn: d.idType === "Saudi ID" ? "Date of Birth (Hijri)" : "Date of Birth",
+          labelAr: d.idType === "Saudi ID" ? "تاريخ الميلاد (هجري)" : "تاريخ الميلاد",
+          required: true,
+          type: d.idType === "Saudi ID" ? "hijri" : "date",
+          value: d.birthDate ?? "",
+          onChange: (v) => updateDraft("birthDate", v),
+        },
+      ];
+    }
+    if (d.idType === "GCC ID") {
+      return [
+        { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
+        addressField,
+        { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: d.licenseNumber, onChange: (v) => updateDraft("licenseNumber", v) },
+        { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: d.idExpiryDate ?? "", onChange: (v) => updateDraft("idExpiryDate", v) },
+        { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: d.licenseIssuePlace ?? "", onChange: (v) => updateDraft("licenseIssuePlace", v) },
+        { key: "country", labelEn: "Country", labelAr: "الدولة", required: true, type: "text", value: d.nationality ?? "", onChange: (v) => updateDraft("nationality", v) },
+        idCopyNumberField,
+        { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: d.licenseExpiryDate ?? "", onChange: (v) => updateDraft("licenseExpiryDate", v) },
+      ];
+    }
+    // Passport / Visitor — no "Beneficiary ID No." field; identity is border/passport number instead
+    return [
+      addressField,
+      { key: "borderNumber", labelEn: "Border No.", labelAr: "رقم الحدود", required: true, type: "text", value: d.borderNumber ?? "", onChange: (v) => updateDraft("borderNumber", v) },
+      { key: "passportNumber", labelEn: "Passport No.", labelAr: "رقم الجواز", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
+      { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: d.licenseNumber, onChange: (v) => updateDraft("licenseNumber", v) },
+      { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: d.licenseExpiryDate ?? "", onChange: (v) => updateDraft("licenseExpiryDate", v) },
+      { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: d.licenseIssuePlace ?? "", onChange: (v) => updateDraft("licenseIssuePlace", v) },
+      { key: "country", labelEn: "Country", labelAr: "الدولة", required: true, type: "text", value: d.nationality ?? "", onChange: (v) => updateDraft("nationality", v) },
+      idCopyNumberField,
+      { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: d.idExpiryDate ?? "", onChange: (v) => updateDraft("idExpiryDate", v) },
+    ];
+  }
+
+  const canCreateContract = !client.blacklisted && client.kycStatus === "verified";
+
+  const outstandingDebt = (client.debts ?? []).reduce((sum, d) => sum + (d.status !== "paid" ? d.amount : 0), 0);
+
+  const previousContracts = client.history.filter((h) => h.status !== "active" && h.status !== "pending");
+  const activeContracts = client.history.filter((h) => h.status === "active" || h.status === "pending");
+
+  const birthDateStr = client.hijriBirthDate
+    ? `${String(client.hijriBirthDate).slice(0, 4)}/${String(client.hijriBirthDate).slice(4, 6)}/${String(client.hijriBirthDate).slice(6, 8)} هـ`
+    : client.birthDate
+      ? `${client.birthDate} م`
+      : T("Not provided", "غير مسجل", ar);
+
+  const contactRows: [string, React.ReactNode, React.ReactNode][] = [
+    [
+      T("Mobile phone", "رقم الجوال", ar),
+      <div key="phone-val" className="flex items-center gap-2">
+        <span>{client.phone}</span>
+        {phoneVerified && (
+          <Badge variant="success" className="mk-overline py-1 px-2 leading-none shrink-0">
+            {T("Verified", "تم التحقق", ar)}
+          </Badge>
+        )}
+      </div>,
+      <Phone key="p" size={13} className="text-mk-ink-400 shrink-0" />
+    ],
+    [
+      T("Email", "البريد الإلكتروني", ar),
+      client.email ? (
+        <div key="email-val" className="flex items-center gap-2">
+          <span>{client.email}</span>
+          {emailVerified && (
+            <Badge variant="success" className="mk-overline py-1 px-2 leading-none shrink-0">
+              {T("Verified", "تم التحقق", ar)}
+            </Badge>
+          )}
+        </div>
+      ) : (
+        T("Not provided", "غير مسجل", ar)
+      ),
+      <Mail key="e" size={13} className="text-mk-ink-400 shrink-0" />
+    ],
+  ];
+
+  // Identity & License — includes the per-type fields (ID copy no., license issue
+  // place, border no.) only when the customer's ID type actually has them, mirroring
+  // the new-contract flow's identity form.
+  const identityRows: [string, React.ReactNode, React.ReactNode][] = [
+    [T("Identity Type", "نوع الإثبات", ar), client.idType === "Passport" ? T("Visitor", "زائر", ar) : client.idType, <CreditCard key="t" size={13} className="text-mk-ink-400 shrink-0" />],
+    [T(client.idType === "Passport" ? "Passport No." : "Identity Number", client.idType === "Passport" ? "رقم الجواز" : "رقم الإثبات", ar), client.idNumber, <CreditCard key="n" size={13} className="text-mk-ink-400 shrink-0" />],
+    ...(client.idType === "Passport" ? [[T("Border No.", "رقم الحدود", ar), client.borderNumber || T("Not provided", "غير مسجل", ar), <CreditCard key="bn" size={13} className="text-mk-ink-400 shrink-0" />] as [string, React.ReactNode, React.ReactNode]] : []),
+    [T("ID Expiry Date", "انتهاء الهوية", ar), client.idExpiryDate || T("Not provided", "غير مسجل", ar), <Calendar key="ie" size={13} className="text-mk-ink-400 shrink-0" />],
+    [T("Date of Birth", "تاريخ الميلاد", ar), birthDateStr, <Calendar key="b" size={13} className="text-mk-ink-400 shrink-0" />],
+    [T("Nationality", "الجنسية", ar), client.nationality || T("Not provided", "غير مسجل", ar), <MapPin key="nat" size={13} className="text-mk-ink-400 shrink-0" />],
+    ...(client.idType === "GCC ID" || client.idType === "Passport" ? [[T("ID Copy No.", "رقم نسخة الهوية", ar), client.idCopyNumber || T("Not provided", "غير مسجل", ar), <CreditCard key="icn" size={13} className="text-mk-ink-400 shrink-0" />] as [string, React.ReactNode, React.ReactNode]] : []),
+    [T("Driving License", "رقم رخصة القيادة", ar), client.licenseNumber, <FileText key="l" size={13} className="text-mk-ink-400 shrink-0" />],
+    [T("License Expiry", "انتهاء الرخصة", ar), client.licenseExpiryDate || T("Not provided", "غير مسجل", ar), <Calendar key="le" size={13} className="text-mk-ink-400 shrink-0" />],
+    ...(client.idType === "GCC ID" || client.idType === "Passport" ? [[T("License Issue Place", "مكان إصدار الرخصة", ar), client.licenseIssuePlace || T("Not provided", "غير مسجل", ar), <MapPin key="lip" size={13} className="text-mk-ink-400 shrink-0" />] as [string, React.ReactNode, React.ReactNode]] : []),
+  ];
+
+  const addressRows: [string, React.ReactNode, React.ReactNode][] = [
+    [T("Address", "العنوان الوطني", ar), client.personAddress || T("Not provided", "غير مسجل", ar), <MapPin key="a" size={13} className="text-mk-ink-400 shrink-0" />],
+    [T("Registration date", "تاريخ التسجيل", ar), client.joinDate, <Calendar key="j" size={13} className="text-mk-ink-400 shrink-0" />],
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Saved toast */}
+      {savedToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full text-white mk-label shadow-2xl flex items-center gap-2 bg-mk-midnight">
+          <Check size={14} /> {T("Customer profile saved", "تم حفظ بيانات العميل", ar)}
+        </div>
+      )}
+
+      {/* Back nav */}
+      <div className="flex items-center gap-3">
+        <Link href="/employee/customer" className="w-9 h-9 rounded-full flex items-center justify-center bg-white shadow-[var(--shadow-card)] text-mk-ink-600 no-underline hover:bg-mk-ink-50 transition-colors">
+          {ar ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </Link>
+        <span className="mk-body-sm text-mk-ink-500">{T("Back to Customers", "العودة إلى العملاء", ar)}</span>
+        <div className="flex-1" />
+        {canCreateContract && (
+          <Link
+            href={`/employee/new-contract?clientId=${client.id}`}
+            className="flex items-center gap-2 px-4 py-3 rounded-full mk-label text-white bg-mk-blue-500 no-underline shadow-[var(--shadow-glow-blue)]"
+          >
+            <FileSignature size={14} /> {T("Create contract", "إنشاء عقد", ar)}
+          </Link>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: profile + verification */}
+        <div className="rounded-xl p-6 mk-surface">
+          <div className="flex items-center gap-3">
+            <Avatar name={ar ? client.nameAr : client.name} size="lg" className={client.blacklisted ? "grayscale opacity-50" : ""} />
+            <div>
+              <div className="mk-body leading-tight text-mk-ink-900">{ar ? client.nameAr : client.name}</div>
+              <p className="mk-caption font-mono mt-1 text-mk-ink-400">ID: {client.id}</p>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {client.blacklisted ? (
+                  <Badge variant="danger" dot>{T("Blacklisted", "قائمة سوداء", ar)}</Badge>
+                ) : phoneVerified || emailVerified ? (
+                  <Badge variant="success" dot>{T("Verified", "موثّق", ar)}</Badge>
+                ) : (
+                  <Badge variant="warning" dot>{T("Awaiting Verification", "بانتظار التحقق", ar)}</Badge>
+                )}
+                {client.rating > 0 && (
+                  <span className="flex items-center gap-1 mk-caption text-mk-warning">
+                    <Star size={12} className="fill-current" /> {client.rating}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Profile attributes */}
+          <div className="flex items-center justify-between mt-4 mb-2">
+            <span className="mk-overline uppercase tracking-wider text-mk-ink-500">{T("Profile details", "بيانات العميل", ar)}</span>
+            {!editing ? (
+              <Button variant="ghost" size="sm" onClick={startEditing}>
+                <Pencil size={12} /> {T("Edit", "تعديل", ar)}
+              </Button>
+            ) : draft && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={cancelEditing}>
+                  <XIcon size={12} /> {T("Cancel", "إلغاء", ar)}
+                </Button>
+                <Button variant="primary" size="sm" disabled={!draft.name || !draft.phone} onClick={saveEditing}>
+                  <Check size={12} /> {T("Save changes", "حفظ التعديلات", ar)}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {!editing ? (
+            <div className="flex flex-col gap-4">
+              {/* Group 1: Contact Details */}
+              <div className="flex flex-col gap-2">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("Contact Info", "بيانات الاتصال", ar)}
+                </div>
+                <div className="flex flex-col gap-3">
+                  {contactRows.map(([k, v, icon], idx) => (
+                    <div key={idx} className="flex justify-between items-center mk-label border-b border-mk-ink-100 last:border-none pb-2 last:pb-0">
+                      <span className="flex items-center gap-2 text-mk-ink-500">{icon}{k}</span>
+                      <strong className="text-mk-ink-900">{v}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Group 2: Identity & Driving */}
+              <div className="flex flex-col gap-2 border-t border-mk-ink-100 pt-3">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("Identity & License", "الهوية والقيادة", ar)}
+                </div>
+                <div className="flex flex-col gap-3">
+                  {identityRows.map(([k, v, icon], idx) => (
+                    <div key={idx} className="flex justify-between items-center mk-label border-b border-mk-ink-100 last:border-none pb-2 last:pb-0">
+                      <span className="flex items-center gap-2 text-mk-ink-500">{icon}{k}</span>
+                      <strong className="text-mk-ink-900">{v}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Group 3: National Address */}
+              <div className="flex flex-col gap-2 border-t border-mk-ink-100 pt-3">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("National Address & Registration", "العنوان والتسجيل", ar)}
+                </div>
+                <div className="flex flex-col gap-3">
+                  {addressRows.map(([k, v, icon], idx) => (
+                    <div key={idx} className="flex justify-between items-center mk-label border-b border-mk-ink-100 last:border-none pb-2 last:pb-0">
+                      <span className="flex items-center gap-2 text-mk-ink-500">{icon}{k}</span>
+                      <strong className="text-mk-ink-900">{v}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : draft && (
+            <div className="flex flex-col gap-4 bg-transparent border-0 p-0">
+              {/* Section 1: Personal Info */}
+              <div className="flex flex-col gap-3">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("Personal Information", "البيانات الشخصية", ar)}
+                </div>
+                <EditField label={T("Full name (English)", "الاسم (إنجليزي)", ar)} value={draft.name} onChange={(v) => updateDraft("name", v)} />
+                <EditField label={T("Full name (Arabic)", "الاسم (عربي)", ar)} value={draft.nameAr} onChange={(v) => updateDraft("nameAr", v)} dir="rtl" />
+              </div>
+
+              {/* Section 2: Contact Info */}
+              <div className="flex flex-col gap-3 border-t border-mk-ink-100 pt-3">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("Contact Info", "بيانات الاتصال", ar)}
+                </div>
+                <EditField
+                  label={T("Mobile phone", "رقم الجوال", ar)}
+                  value={draft.phone}
+                  onChange={(v) => updateDraft("phone", v)}
+                  badge={
+                    phoneVerified && (
+                      <Badge variant="success" className="mk-overline py-1 px-2 leading-none shrink-0">
+                        {T("Verified", "تم التحقق", ar)}
+                      </Badge>
+                    )
+                  }
+                  isRtl={ar}
+                />
+                <EditField
+                  label={T("Email", "البريد الإلكتروني", ar)}
+                  value={draft.email ?? ""}
+                  onChange={(v) => updateDraft("email", v)}
+                  type="email"
+                  badge={
+                    emailVerified && (
+                      <Badge variant="success" className="mk-overline py-1 px-2 leading-none shrink-0">
+                        {T("Verified", "تم التحقق", ar)}
+                      </Badge>
+                    )
+                  }
+                  isRtl={ar}
+                />
+              </div>
+
+              {/* Section 3: Identity & License */}
+              <div className="flex flex-col gap-3 border-t border-mk-ink-100 pt-3">
+                <div className="mk-overline uppercase tracking-wider text-mk-ink-400">
+                  {T("Identity & License", "الهوية والقيادة", ar)}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="mk-overline text-mk-ink-500">{T("ID Type", "نوع الهوية", ar)}</label>
+                  <Select
+                    value={draft.idType}
+                    onChange={(e) => updateDraft("idType", e.target.value)}
+                  >
+                    <option value="Saudi ID">{T("National ID", "هوية وطنية", ar)}</option>
+                    <option value="Iqama">{T("Iqama", "إقامة", ar)}</option>
+                    <option value="Passport">{T("Visitor", "زائر", ar)}</option>
+                    <option value="GCC ID">{T("GCC ID", "هوية خليجية", ar)}</option>
+                  </Select>
+                </div>
+                {/* Dynamic identity fields — depends on ID Type, matches the new-contract flow exactly */}
+                <div className="grid grid-cols-2 gap-3">
+                  {identityFieldsFor(draft).map((f) => (
+                    f.type === "hijri" ? (
+                      <div key={f.key} className="flex flex-col gap-1">
+                        <label className="mk-overline text-mk-ink-500">{T(f.labelEn, f.labelAr, ar) + (f.required ? " *" : "")}</label>
+                        <HijriDatePicker value={f.value} onChange={f.onChange} ar={ar} />
+                      </div>
+                    ) : (
+                      <EditField
+                        key={f.key}
+                        label={T(f.labelEn, f.labelAr, ar) + (f.required ? " *" : "")}
+                        value={f.value}
+                        onChange={f.onChange}
+                        type={f.type}
+                      />
+                    )
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {client.blacklisted && (
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-mk-ink-100 mk-caption text-mk-danger">
+              <Ban size={13} />{T("This customer is restricted from new bookings", "هذا العميل موقوف عن الحجوزات الجديدة", ar)}
+            </div>
+          )}        </div>
+
+        {/* Right: contract history */}
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl p-6 mk-surface">
+            <div className="flex items-center justify-between mb-3">
+              <div className="mk-h4 text-mk-ink-900">{T("Contracts", "العقود", ar)}</div>
+              <span className="mk-overline uppercase text-mk-ink-400">{T(`${client.history.length} on file`, `${client.history.length} سجل`, ar)}</span>
+            </div>
+            {client.history.length === 0 ? (
+              <p className="mk-caption p-3 text-center bg-mk-ink-50 rounded-md text-mk-ink-400">
+                {T("No rental contracts on file yet", "لا يوجد عقود تأجير مسجلة بعد لهذا العميل", ar)}
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {[...activeContracts, ...previousContracts].map((h) => (
+                  <ContractRow
+                    key={h.id}
+                    h={h}
+                    ar={ar}
+                    expanded={expandedContract === h.id}
+                    onToggle={() => setExpandedContract((cur) => (cur === h.id ? null : h.id))}
+                    repeatCount={client.history.filter((item) => item.car === h.car).length}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Claims & Debts */}
+          <div className="rounded-xl p-6 mk-surface flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="mk-h4 text-mk-ink-900">{T("Claims & Debts", "المطالبات والمديونيات", ar)}</div>
+              {outstandingDebt > 0 && (
+                <span className="mk-label text-mk-danger">
+                  {T(`${outstandingDebt} SAR outstanding`, `${outstandingDebt} ريال مستحق`, ar)}
+                </span>
+              )}
+            </div>
+            {client.debts && client.debts.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {client.debts.map((d) => (
+                  <div key={d.id} className="p-3 rounded-xl border border-mk-ink-100 bg-mk-ink-50/50 flex flex-col gap-2 text-start">
+                    <div className="flex justify-between items-center mk-caption">
+                      <div className="flex flex-col gap-1">
+                        <span className="mk-label text-mk-ink-900">{ar ? d.typeAr : d.type}</span>
+                        <span className={`mk-overline ${d.office === "Maarkbh" ? "text-mk-blue-500" : "text-mk-warning"}`}>
+                          {ar ? d.officeAr : d.office}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="mk-label text-mk-blue-600">{d.amount} {T("SAR", "ريال", ar)}</span>
+                        <Badge variant={DEBT_BADGE[d.status].variant} className="mk-overline px-2 py-0">
+                          {T(...DEBT_BADGE[d.status].label, ar)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="mk-overline text-mk-ink-500 m-0 leading-relaxed">{ar ? d.notesAr : d.notes}</p>
+                    <div className="mk-overline text-mk-ink-400 text-end">
+                      {d.date}{d.dueDate ? ` · ${T("due", "الاستحقاق", ar)} ${d.dueDate}` : ""}{d.contractRef ? ` · ${d.contractRef}` : ""} · {d.id}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-xl border border-mk-success/20 bg-mk-success/5 mk-caption text-mk-success">
+                <CheckCircle2 size={13} className="shrink-0" />
+                <span>{T("No outstanding claims or debts on file", "لا توجد مطالبات أو مديونيات مستحقة", ar)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange, type = "text", dir, mono, badge, isRtl }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  dir?: "rtl" | "ltr";
+  mono?: boolean;
+  badge?: React.ReactNode;
+  isRtl?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="mk-overline text-mk-ink-500">{label}</label>
+      <div className="relative flex items-center">
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          dir={dir}
+          className={`px-3 h-10 rounded-md mk-body-sm outline-none bg-white border border-mk-ink-200 text-mk-ink-900 focus:border-mk-blue-500 focus:shadow-[0_0_0_3px_rgba(65,113,226,0.15)] transition-all w-full ${mono ? "font-mono" : ""}`}
+          style={{ [isRtl ? "paddingLeft" : "paddingRight"]: badge ? "90px" : "12px" }}
+        />
+        {badge && (
+          <div className="absolute top-1/2 -translate-y-1/2" style={{ [isRtl ? "left" : "right"]: "12px" }}>
+            {badge}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ContractRow({ h, ar, expanded, onToggle, repeatCount = 0 }: { h: ClientContract; ar: boolean; expanded: boolean; onToggle: () => void; repeatCount?: number }) {
+  const days = 3;
+  const total = h.rate * days;
+  return (
+    <div className="rounded-md border border-mk-ink-100 bg-mk-ink-50 overflow-hidden transition-all duration-300">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-3 bg-transparent border-0 cursor-pointer text-start hover:bg-mk-ink-100/10 transition-colors duration-200"
+      >
+        <div>
+          <div className="flex items-center gap-2 mk-label text-mk-ink-900">
+            <span>{h.car}</span>
+            {repeatCount > 1 && (
+              <Badge variant="neutral" className="mk-overline py-px px-2 bg-mk-blue-50 text-mk-blue-600 border border-mk-blue-100 leading-normal shrink-0">
+                {ar ? `• استئجار متكرر (${repeatCount})` : `• Repeat Rent (${repeatCount})`}
+              </Badge>
+            )}
+          </div>
+          <div className="mk-overline text-mk-ink-400 mt-1">{h.date} · {h.id}</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-end">
+            <div className="mk-label text-mk-blue-600">{h.rate} {T("SAR/d", "ريال/ي", ar)}</div>
+            <Badge variant={HISTORY_BADGE[h.status].variant} className="mk-overline px-2 mt-1">
+              {T(...HISTORY_BADGE[h.status].label, ar)}
+            </Badge>
+          </div>
+          <ChevronDown size={15} className={`text-mk-ink-400 shrink-0 transition-transform duration-300 ${expanded ? "rotate-180" : ""}`} />
+        </div>
+      </button>
+      <div
+        className="transition-all duration-300 ease-in-out overflow-hidden"
+        style={{
+          maxHeight: expanded ? "300px" : "0px",
+          opacity: expanded ? 1 : 0,
+        }}
+      >
+        <div className="px-3 pb-3 pt-1 border-t border-mk-ink-100">
+          <div className="flex flex-col gap-2 mk-caption">
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Contract ref", "رقم العقد", ar)}</span><strong className="text-mk-ink-900">{h.id}</strong></div>
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Vehicle", "المركبة", ar)}</span><strong className="text-mk-ink-900">{h.car}</strong></div>
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Start date", "تاريخ البدء", ar)}</span><strong className="text-mk-ink-900">{h.date}</strong></div>
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Duration", "المدة", ar)}</span><strong className="text-mk-ink-900">{T(`${days} days`, `${days} أيام`, ar)}</strong></div>
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Daily rate", "السعر اليومي", ar)}</span><strong className="text-mk-ink-900">{h.rate} {T("SAR", "ريال", ar)}</strong></div>
+            <div className="flex justify-between"><span className="text-mk-ink-500">{T("Total amount", "الإجمالي", ar)}</span><strong className="text-mk-blue-600">{total} {T("SAR", "ريال", ar)}</strong></div>
+            <div className="flex justify-between items-center pt-1"><span className="text-mk-ink-500">{T("Status", "الحالة", ar)}</span><Badge variant={HISTORY_BADGE[h.status].variant} className="mk-overline px-2">{T(...HISTORY_BADGE[h.status].label, ar)}</Badge></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

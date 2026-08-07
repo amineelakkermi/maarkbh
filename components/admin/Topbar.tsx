@@ -1,0 +1,52 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui";
+import { TopbarShell } from "@/components/shared/TopbarShell";
+import { useAdmin } from "@/contexts/AdminContext";
+
+const PAGE_META: Record<string, { en: string; ar: string; crumbEn?: string; crumbAr?: string }> = {
+  "/dashboard":    { en: "Dashboard",          ar: "الرئيسية",           crumbEn: "Home",     crumbAr: "الرئيسية" },
+  "/fleet-map":    { en: "Fleet Map",           ar: "خريطة الأسطول",     crumbEn: "Map",      crumbAr: "الخريطة"  },
+  "/bookings":     { en: "Contracts",           ar: "العقود",             crumbEn: "Contracts",crumbAr: "العقود"   },
+  "/fleet":        { en: "Fleet Management",    ar: "إدارة الأسطول",     crumbEn: "Fleet",    crumbAr: "الأسطول"  },
+  "/kyc-queue":    { en: "KYC Queue",           ar: "مراجعة الهوية",     crumbEn: "Customer", crumbAr: "العملاء"  },
+  "/late-returns": { en: "Late Returns",        ar: "الإرجاع المتأخر",   crumbEn: "Customer", crumbAr: "العملاء"  },
+  "/blacklist":    { en: "Blacklist",           ar: "القائمة السوداء",   crumbEn: "Customer", crumbAr: "العملاء"  },
+  "/revenue":      { en: "Revenue",             ar: "الإيرادات",          crumbEn: "Finance",  crumbAr: "المالية"  },
+  "/refunds":      { en: "Refunds",             ar: "المستردات",          crumbEn: "Finance",  crumbAr: "المالية"  },
+  "/pricing":      { en: "Pricing & Policies",  ar: "الأسعار والسياسات", crumbEn: "Finance",  crumbAr: "المالية"  },
+  "/staff":        { en: "Staff & Roles",       ar: "الفريق والأدوار",   crumbEn: "System",   crumbAr: "النظام"   },
+};
+
+export function Topbar() {
+  const { isDark, toggleDark, dir, setSidebarOpen } = useAdmin();
+  const path = usePathname();
+  const ar = dir === "rtl";
+  const meta = PAGE_META[path] ?? { en: "Maarkbh", ar: "مركبة" };
+
+  return (
+    <TopbarShell
+      onOpenSidebar={() => setSidebarOpen(true)}
+      isDark={isDark}
+      onToggleDark={toggleDark}
+      searchPlaceholder={ar ? "ابحث عن عقد، مركبة، عميل…" : "Search contract, car, customer…"}
+      titleBlock={
+        <>
+          {meta.crumbEn && (
+            <div className="mk-body-sm mb-1 text-mk-ink-500 hidden sm:block">{ar ? meta.crumbAr : meta.crumbEn}</div>
+          )}
+          <h1 className="mk-h2 leading-none text-mk-ink-900 tracking-tight truncate">{ar ? meta.ar : meta.en}</h1>
+        </>
+      }
+      trailing={
+        <Button variant="primary" className="shadow-[var(--shadow-glow-blue)] hidden sm:flex shrink-0">
+          <Plus size={16} />
+          <span className="hidden md:inline">{ar ? "عقد جديد" : "New contract"}</span>
+          <span className="md:hidden">+</span>
+        </Button>
+      }
+    />
+  );
+}
