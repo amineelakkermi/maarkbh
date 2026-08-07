@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Loader2, MapPin, Phone, Mail, Edit, Trash2, Building } from "lucide-react";
-import { Avatar, Badge, Button, Table, Th, Td, type BadgeVariant, Input, Drawer, DrawerHeader, DrawerFooter, useToast } from "@/components/ui";
+import { Plus, Loader2, MapPin, Edit, Trash2 } from "lucide-react";
+import { Badge, Button, Table, Th, Td, type BadgeVariant, Input, Drawer, DrawerHeader, DrawerFooter, useToast } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
 import { branchService } from "@/lib/api-services";
 
@@ -37,40 +37,6 @@ export default function BranchesPage() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
 
-  // Mock data - TODO: Replace with API when backend is ready
-  const MOCK_BRANCHES = [
-    {
-      id: 1,
-      name: "Riyadh Branch",
-      nameAr: "فرع الرياض",
-      address: "Olaya Street, Riyadh",
-      phone: "+966 50 123 4567",
-      email: "riyadh@maarkbh.com",
-      status: "Active",
-      manager: "Abdullah Al-Otaibi",
-    },
-    {
-      id: 2,
-      name: "Jeddah Branch",
-      nameAr: "فرع جدة",
-      address: "Prince Sultan Street, Jeddah",
-      phone: "+966 50 234 5678",
-      email: "jeddah@maarkbh.com",
-      status: "Active",
-      manager: "Mohammed Al-Qahtani",
-    },
-    {
-      id: 3,
-      name: "Dammam Branch",
-      nameAr: "فرع الدمام",
-      address: "King Fahd Road, Dammam",
-      phone: "+966 50 345 6789",
-      email: "dammam@maarkbh.com",
-      status: "Pending",
-      manager: "Not assigned",
-    },
-  ];
-
   // Load branches from API
   useEffect(() => {
     loadBranches();
@@ -84,17 +50,14 @@ export default function BranchesPage() {
         id: item.id,
         name: item.nameEn || item.name || '',
         nameAr: item.nameAr || '',
-        address: item.address || '',
-        phone: item.phone || '',
-        email: item.email || '',
         status: item.isActive ? 'Active' : 'Inactive',
-        manager: item.manager || 'Not assigned',
+        latitude: item.latitude ?? null,
+        longitude: item.longitude ?? null,
       }));
       setBranches(transformedBranches);
     } catch (error) {
       console.error('Error loading branches:', error);
-      // Fallback to mock data on error
-      setBranches(MOCK_BRANCHES);
+      setBranches([]);
     } finally {
       setLoading(false);
     }
@@ -120,8 +83,8 @@ export default function BranchesPage() {
     setNameAr(branch.nameAr || "");
     setNameEn(branch.name || "");
     setIsActive(branch.status === "Active");
-    setLatitude("");
-    setLongitude("");
+    setLatitude(branch.latitude != null ? String(branch.latitude) : "");
+    setLongitude(branch.longitude != null ? String(branch.longitude) : "");
     setEditDrawerOpen(true);
   };
 
@@ -133,27 +96,15 @@ export default function BranchesPage() {
     }
 
     try {
-      // TODO: Uncomment when backend is ready
-      // await branchService.update(editingBranch.id, {
-      //   nameAr,
-      //   nameEn,
-      //   isActive,
-      //   latitude: latitude ? parseFloat(latitude) : undefined,
-      //   longitude: longitude ? parseFloat(longitude) : undefined,
-      // });
+      await branchService.update(editingBranch.id, {
+        nameAr,
+        nameEn,
+        isActive,
+        latitude: latitude ? parseFloat(latitude) : undefined,
+        longitude: longitude ? parseFloat(longitude) : undefined,
+      });
 
-      // Using mock data for now - update local state
-      setBranches(branches.map(b =>
-        b.id === editingBranch.id
-          ? {
-              ...b,
-              name: nameEn,
-              nameAr: nameAr,
-              status: isActive ? "Active" : "Inactive",
-            }
-          : b
-      ));
-
+      await loadBranches();
       setEditDrawerOpen(false);
       setEditingBranch(null);
       setNameAr("");
@@ -223,9 +174,7 @@ export default function BranchesPage() {
             <tr>
               {[
                 T("Branch name", "اسم الفرع", ar),
-                T("Address", "العنوان", ar),
-                T("Contact", "الاتصال", ar),
-                T("Manager", "المدير", ar),
+                T("Coordinates", "الموقع", ar),
                 T("Status", "الحالة", ar),
                 "",
               ].map((h, i) => <Th key={i}>{h}</Th>)}
@@ -234,13 +183,13 @@ export default function BranchesPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="text-center py-12">
+                <td colSpan={4} className="text-center py-12">
                   <Loader2 className="animate-spin text-mk-blue-500 mx-auto" size={32} />
                 </td>
               </tr>
             ) : branches.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 mk-label text-mk-ink-400">
+                <td colSpan={4} className="text-center py-12 mk-label text-mk-ink-400">
                   {T("No branches found", "لم يتم العثور على فروع", ar)}
                 </td>
               </tr>
@@ -255,26 +204,11 @@ export default function BranchesPage() {
                   <Td>
                     <div className="flex items-center gap-2 mk-label text-mk-ink-700">
                       <MapPin size={14} />
-                      {branch.address}
+                      {branch.latitude != null && branch.longitude != null
+                        ? `${branch.latitude}, ${branch.longitude}`
+                        : T("Not set", "غير محدد", ar)}
                     </div>
                   </Td>
-                  <Td>
-                    <div className="flex flex-col gap-1">
-                      {branch.phone && (
-                        <div className="flex items-center gap-2 mk-caption text-mk-ink-600">
-                          <Phone size={12} />
-                          {branch.phone}
-                        </div>
-                      )}
-                      {branch.email && (
-                        <div className="flex items-center gap-2 mk-caption text-mk-ink-600">
-                          <Mail size={12} />
-                          {branch.email}
-                        </div>
-                      )}
-                    </div>
-                  </Td>
-                  <Td className="mk-label text-mk-ink-700">{branch.manager}</Td>
                   <Td>
                     <Badge variant={STATUS_BADGE[branch.status] ?? "neutral"}>
                       {ar ? (STATUS_AR[branch.status] ?? branch.status) : branch.status}

@@ -21,7 +21,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = await response.json();
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return new NextResponse(null, { status: response.status });
+    }
+
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : null;
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error creating branch:', error);

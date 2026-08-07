@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Edit } from "lucide-react";
 import { Avatar, Badge, Button, Table, Th, Td, type BadgeVariant, Drawer, DrawerHeader, DrawerFooter, useToast, Input, Select } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
 import { tenantUserService, tenantRoleService, branchService } from "@/lib/api-services";
@@ -61,17 +61,22 @@ export default function StaffPage() {
       setLoading(true);
       const response = await tenantUserService.getUsers(1, 100);
       console.log('Users API response:', response);
-      const transformedUsers = (response.items || response.data || []).map((item: any) => ({
+
+      const rawUsers = response.items || response.data || [];
+
+      const transformedUsers = rawUsers.map((item: any) => ({
         id: item.id,
         name: item.fullName || '',
         email: item.email || '',
         role: item.roleDisplayName || item.roleName || 'Staff',
         roleName: item.roleName || '',
-        branch: item.hasAllBranches ? 'All branches' : (item.branchNames?.join(', ') || 'All branches'),
-        lastActive: item.lastActive || '—',
+        branch: item.hasAllBranches
+          ? T("All branches", "جميع الفروع", ar)
+          : `${item.branchCount ?? 0} ${T("branch(es)", "فرع/فروع", ar)}`,
         permissions: item.roleName?.startsWith('TenantAdmin') || item.isEditable === false
           ? 'All permissions'
           : (item.permissionsCount || 0),
+        isActive: item.isActive !== false,
       }));
       setUsers(transformedUsers);
     } catch (error) {
@@ -115,7 +120,7 @@ export default function StaffPage() {
     );
   };
 
-  const handleEditUser = (user: any) => {
+  const handleEditUser = async (user: any) => {
     setEditingUser(user);
     setFullName(user.name || "");
     setEmail(user.email || "");
@@ -124,6 +129,19 @@ export default function StaffPage() {
     setBranchIds(user.branchIds || []);
     setIsActive(user.isActive !== false);
     setEditDrawerOpen(true);
+
+    // The list endpoint doesn't return branchIds, only branch names —
+    // fetch full details so the branch checkboxes/isActive/role are accurate.
+    try {
+      const details = await tenantUserService.getById(user.id);
+      setFullName(details.fullName || user.name || "");
+      setRoleName(details.roleName || user.roleName || "");
+      setBranchIds(details.branchIds || []);
+      setIsActive(details.isActive !== false);
+      setEditingUser((prev: any) => ({ ...prev, ...details }));
+    } catch (error) {
+      console.error('Error loading user details:', error);
+    }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -173,9 +191,10 @@ export default function StaffPage() {
       setEditingUser(null);
       resetForm();
       showToast(T("🟢 User updated successfully!", "🟢 تم تحديث الموظف بنجاح!", ar));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating user:', error);
-      showToast(T('Failed to update user', 'فشل تحديث الموظف', ar));
+      const message = error?.message || T('Failed to update user', 'فشل تحديث الموظف', ar);
+      showToast(message);
     }
   };
 
@@ -228,7 +247,7 @@ export default function StaffPage() {
                 T("Person", "الشخص", ar),
                 T("Role", "الدور", ar),
                 T("Branch", "الفرع", ar),
-                T("Last active", "آخر نشاط", ar),
+                T("Status", "الحالة", ar),
                 T("Permissions", "الصلاحيات", ar),
                 "",
               ].map((h, i) => <Th key={i}>{h}</Th>)}
@@ -237,13 +256,13 @@ export default function StaffPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="text-center py-12">
+                <td colSpan={7} className="text-center py-12">
                   <Loader2 className="animate-spin text-mk-blue-500 mx-auto" size={32} />
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 mk-label text-mk-ink-400">
+                <td colSpan={7} className="text-center py-12 mk-label text-mk-ink-400">
                   {T("No staff members found", "لم يتم العثور على أعضاء الفريق", ar)}
                 </td>
               </tr>
@@ -262,11 +281,15 @@ export default function StaffPage() {
                     </Badge>
                   </Td>
                   <Td className="mk-label text-mk-ink-700">{p.branch}</Td>
-                  <Td className="mk-caption text-mk-ink-500">{p.lastActive}</Td>
+                  <Td>
+                    <Badge variant={p.isActive ? "success" : "danger"} dot>
+                      {p.isActive ? T("Active", "نشط", ar) : T("Inactive", "غير نشط", ar)}
+                    </Badge>
+                  </Td>
                   <Td className="mk-caption text-mk-ink-500">{typeof p.permissions === 'number' ? `${p.permissions} permissions` : p.permissions}</Td>
                   <Td>
                     <Button variant="outline" size="sm" onClick={() => handleEditUser(p)}>
-                      {T("Edit", "تعديل", ar)}
+                      <Edit size={14} />
                     </Button>
                   </Td>
                 </tr>
