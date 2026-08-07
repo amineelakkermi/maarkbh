@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const makeId = Number(params.id);
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const makeId = Number((await params).id);
   if (isNaN(makeId) || makeId <= 0) {
     return NextResponse.json(
       { error: 'Invalid vehicle make id' },
@@ -36,8 +36,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  const makeId = Number(params.id);
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const makeId = Number((await params).id);
   if (isNaN(makeId) || makeId <= 0) {
     return NextResponse.json(
       { error: 'Invalid vehicle make id' },
@@ -76,8 +76,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const makeId = Number(params.id);
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const makeId = Number((await params).id);
   if (isNaN(makeId) || makeId <= 0) {
     return NextResponse.json(
       { error: 'Invalid vehicle make id' },

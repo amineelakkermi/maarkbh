@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest, { params }: { params: { name: string; roleId: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string; roleId: string }> }) {
   try {
-    const { name, roleId } = params;
+    const { name, roleId } = await params;
     
     const response = await fetch(`http://139.59.140.232/api/tenant/roles/name-exists/${name}/${roleId}`, {
       method: 'GET',
