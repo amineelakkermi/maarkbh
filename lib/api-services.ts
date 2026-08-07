@@ -19,8 +19,6 @@ export const authService = {
     formData.append('username', credentials.username);
     formData.append('password', credentials.password);
 
-    console.log('🔐 Attempting login with username:', credentials.username);
-
     // Use Next.js API route as proxy to avoid CORS
     const response = await fetch('/api/auth/login', {
       method: 'POST',
@@ -30,17 +28,13 @@ export const authService = {
       body: formData.toString(),
     });
 
-    console.log('📡 Login response status:', response.status);
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
-      console.error('❌ Login failed:', errorData);
       throw new Error(errorData?.error_description || errorData?.error || errorData?.details || 'Authentication failed');
     }
 
     const data = await response.json();
-    console.log('✅ Login successful, received tokens');
-    
+
     // Store token in client
     if (data.access_token) {
       apiClient.setToken(data.access_token);
@@ -200,6 +194,26 @@ export const customerService = {
    */
   async getVerificationStatuses(): Promise<any> {
     return apiClient.request('/customers/verification-statuses', {
+      method: 'GET',
+    });
+  },
+
+  /**
+   * Get tajeer statuses
+   * GET /api/customers/tajeer-statuses
+   */
+  async getTajeerStatuses(): Promise<any> {
+    return apiClient.request('/customers/tajeer-statuses', {
+      method: 'GET',
+    });
+  },
+
+  /**
+   * Get document types
+   * GET /api/customers/document-types
+   */
+  async getDocumentTypes(): Promise<any> {
+    return apiClient.request('/customers/document-types', {
       method: 'GET',
     });
   },

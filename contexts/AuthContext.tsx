@@ -95,13 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      console.log('🔑 Raw Token Response:', tokenResponse);
-      console.log('🔑 Access Token:', tokenResponse.access_token);
-      console.log('🔑 ID Token:', tokenResponse.id_token);
-      
       // Decode id_token to get user information
       const decoded = tokenResponse.id_token ? decodeJWT(tokenResponse.id_token) : null;
-      console.log('🔑 Decoded JWT Token:', decoded);
 
       // Store the session ONLY on success
       setIsLoggedIn(true);

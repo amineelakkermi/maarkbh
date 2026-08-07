@@ -6,9 +6,6 @@
 // Use Next.js proxy to avoid CORS issues
 const API_BASE_URL = ''; // Empty string means relative URLs, which will use the Next.js proxy
 
-console.log('🔗 API Client initialized with base URL:', API_BASE_URL || '/api (Next.js proxy)');
-console.log('🔗 Environment variable NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
-
 // JWT Token decoding utilities
 export function decodeJWT(token: string): any {
   try {
@@ -24,7 +21,6 @@ export function decodeJWT(token: string): any {
     return JSON.parse(jsonPayload);
   } catch (error) {
     console.error('Failed to decode JWT:', error);
-    console.log('Token sample:', token.substring(0, 50) + '...');
     return null;
   }
 }
@@ -140,12 +136,8 @@ class ApiClient {
       }
     }
 
-    console.log(`🌐 API Request: ${method} ${url}`, { body, headers });
-
     try {
       const response = await fetch(url, config);
-
-      console.log(`📡 API Response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -164,7 +156,6 @@ class ApiClient {
       }
 
       const data = await response.json();
-      console.log('✅ API Success:', data);
       return data;
     } catch (error) {
       if (error instanceof ApiError) {
