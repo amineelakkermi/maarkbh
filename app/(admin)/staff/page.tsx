@@ -8,6 +8,11 @@ import { tenantUserService, tenantRoleService, branchService } from "@/lib/api-s
 
 const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
 
+// The API returns branch assignments either as a list of ids or a list of
+// { id, nameAr, nameEn } objects depending on the endpoint — normalize both.
+const extractBranchIds = (details: any): number[] =>
+  (details?.branches || details?.branchIds || []).map((b: any) => (typeof b === 'object' ? b.id : b));
+
 const ROLE_BADGE: Record<string, BadgeVariant> = {
   "Owner": "violet",
   "Manager": "info",
@@ -39,7 +44,10 @@ export default function StaffPage() {
   const [branchOptions, setBranchOptions] = useState<any[]>([]);
   const [isDrawerOpen, setDrawerOpen] = useState(false);
   const [isEditDrawerOpen, setEditDrawerOpen] = useState(false);
+  const [isViewDrawerOpen, setViewDrawerOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [viewingUser, setViewingUser] = useState<any>(null);
+  const [viewLoading, setViewLoading] = useState(false);
   const { showToast } = useToast();
 
   const [fullName, setFullName] = useState("");
@@ -136,11 +144,26 @@ export default function StaffPage() {
       const details = await tenantUserService.getById(user.id);
       setFullName(details.fullName || user.name || "");
       setRoleName(details.roleName || user.roleName || "");
-      setBranchIds(details.branchIds || []);
+      setEmail(details.email || user.email || "");
+      setBranchIds(extractBranchIds(details));
       setIsActive(details.isActive !== false);
       setEditingUser((prev: any) => ({ ...prev, ...details }));
     } catch (error) {
       console.error('Error loading user details:', error);
+    }
+  };
+
+  const handleViewUser = async (user: any) => {
+    setViewingUser(user);
+    setViewDrawerOpen(true);
+    setViewLoading(true);
+    try {
+      const details = await tenantUserService.getById(user.id);
+      setViewingUser({ ...user, ...details, branchIds: extractBranchIds(details) });
+    } catch (error) {
+      console.error('Error loading user details:', error);
+    } finally {
+      setViewLoading(false);
     }
   };
 
@@ -256,19 +279,23 @@ export default function StaffPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="text-center py-12">
+                <td colSpan={6} className="text-center py-12">
                   <Loader2 className="animate-spin text-mk-blue-500 mx-auto" size={32} />
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 mk-label text-mk-ink-400">
+                <td colSpan={6} className="text-center py-12 mk-label text-mk-ink-400">
                   {T("No staff members found", "لم يتم العثور على أعضاء الفريق", ar)}
                 </td>
               </tr>
             ) : (
               users.map((p) => (
-                <tr key={p.id} className="cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50">
+                <tr
+                  key={p.id}
+                  onClick={() => handleViewUser(p)}
+                  className="cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50"
+                >
                   <Td>
                     <div className="flex items-center gap-3">
                       <Avatar name={p.name} size="sm" />
@@ -288,7 +315,11 @@ export default function StaffPage() {
                   </Td>
                   <Td className="mk-caption text-mk-ink-500">{typeof p.permissions === 'number' ? `${p.permissions} permissions` : p.permissions}</Td>
                   <Td>
-                    <Button variant="outline" size="sm" onClick={() => handleEditUser(p)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); handleEditUser(p); }}
+                    >
                       <Edit size={14} />
                     </Button>
                   </Td>
@@ -325,6 +356,76 @@ export default function StaffPage() {
           })}
         </div>
       </div>
+
+      {/* View Drawer */}
+      <Drawer open={isViewDrawerOpen} onClose={() => setViewDrawerOpen(false)}>
+        <div className="flex flex-col gap-5 justify-between h-full max-w-[480px]">
+          <div>
+            <DrawerHeader title={T("Teammate Details", "تفاصيل العضو", ar)} onClose={() => setViewDrawerOpen(false)} className="mb-0 pb-4 border-b border-mk-ink-100" />
+
+            {viewLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="animate-spin text-mk-blue-500" size={28} />
+              </div>
+            ) : viewingUser && (
+              <div className="flex flex-col gap-4 mt-5">
+                <div className="flex items-center gap-3">
+                  <Avatar name={viewingUser.name || viewingUser.fullName} size="md" />
+                  <div className="mk-body text-mk-ink-900">{viewingUser.name || viewingUser.fullName}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-md bg-mk-ink-50">
+                    <div className="mk-caption text-mk-ink-500 mb-1">{T("Role", "الدور", ar)}</div>
+                    <div className="mk-label text-mk-ink-900">{viewingUser.roleDisplayName || viewingUser.role}</div>
+                  </div>
+                  <div className="p-3 rounded-md bg-mk-ink-50">
+                    <div className="mk-caption text-mk-ink-500 mb-1">{T("Status", "الحالة", ar)}</div>
+                    <Badge variant={viewingUser.isActive ? "success" : "danger"} dot>
+                      {viewingUser.isActive ? T("Active", "نشط", ar) : T("Inactive", "غير نشط", ar)}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-md bg-mk-ink-50">
+                  <div className="mk-caption text-mk-ink-500 mb-1">{T("Branches", "الفروع", ar)}</div>
+                  <div className="mk-label text-mk-ink-900">
+                    {viewingUser.hasAllBranches
+                      ? T("All branches", "جميع الفروع", ar)
+                      : (viewingUser.branchIds || []).length > 0
+                        ? branchOptions
+                            .filter((b) => viewingUser.branchIds.includes(b.id))
+                            .map((b) => (ar ? (b.nameAr || b.name) : (b.nameEn || b.name)))
+                            .join(', ')
+                        : T("No branches assigned", "لا توجد فروع مخصصة", ar)}
+                  </div>
+                </div>
+
+                {viewingUser.email && (
+                  <div className="p-3 rounded-md bg-mk-ink-50">
+                    <div className="mk-caption text-mk-ink-500 mb-1">{T("Email", "الإيميل", ar)}</div>
+                    <div className="mk-label text-mk-ink-900">{viewingUser.email}</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DrawerFooter className="mt-0 pt-4 border-t border-mk-ink-100 justify-stretch">
+            <Button variant="outline" onClick={() => setViewDrawerOpen(false)}>
+              {T("Close", "إغلاق", ar)}
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1 shadow-[var(--shadow-glow-blue)]"
+              onClick={() => { setViewDrawerOpen(false); handleEditUser(viewingUser); }}
+            >
+              <Edit size={14} />
+              {T("Edit", "تعديل", ar)}
+            </Button>
+          </DrawerFooter>
+        </div>
+      </Drawer>
 
       {/* Create Drawer */}
       <Drawer open={isDrawerOpen} onClose={() => setDrawerOpen(false)}>
