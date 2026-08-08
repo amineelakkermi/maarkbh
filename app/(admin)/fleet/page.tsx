@@ -15,6 +15,7 @@ import {
   plateTypeService,
   insuranceCompanyService,
   insuranceTypeService,
+  attachmentService,
 } from "@/lib/api-services";
 
 const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
@@ -70,6 +71,9 @@ export default function FleetPage() {
   const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>(emptyVehicleForm());
+  const [vehicleImages, setVehicleImages] = useState<File[]>([]);
+  const [vehicleImagePreviews, setVehicleImagePreviews] = useState<string[]>([]);
+  const [existingImageFileIds, setExistingImageFileIds] = useState<number[]>([]);
 
   // Load vehicles from API
   useEffect(() => {
@@ -110,7 +114,12 @@ export default function FleetPage() {
       .catch((error: any) => console.error('Error loading vehicle models:', error));
   }, [form.makeId]);
 
-  const resetForm = () => setForm(emptyVehicleForm());
+  const resetForm = () => {
+    setForm(emptyVehicleForm());
+    setVehicleImages([]);
+    setVehicleImagePreviews([]);
+    setExistingImageFileIds([]);
+  };
 
   const handleAddVehicle = () => {
     setEditingVehicleId(null);
@@ -118,11 +127,33 @@ export default function FleetPage() {
     setDrawerOpen(true);
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    // Keep previous + new files
+    const newImages = [...vehicleImages, ...files];
+    const newPreviews = [...vehicleImagePreviews, ...files.map((f) => URL.createObjectURL(f))];
+    setVehicleImages(newImages);
+    setVehicleImagePreviews(newPreviews);
+  };
+
+  const removeImage = (index: number) => {
+    setVehicleImages((prev) => prev.filter((_, i) => i !== index));
+    setVehicleImagePreviews((prev) => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
   const handleEditVehicle = async (car: Car) => {
     setEditingVehicleId(car.id);
+    setVehicleImages([]);
+    setVehicleImagePreviews([]);
     setDrawerOpen(true);
     try {
       const v = await vehicleService.getById(car.id);
+      setExistingImageFileIds(v.images?.map((img: any) => img.fileId) || []);
       setForm({
         plateTypeId: v.plate?.plateTypeId ?? '',
         plateNumber: v.plate?.plateNumber ?? '',
@@ -164,13 +195,13 @@ export default function FleetPage() {
     }
   };
 
-  const buildVehiclePayload = () => ({
+  const buildVehiclePayload = (imageFileIds: number[] = []) => ({
     plate: {
       plateTypeId: form.plateTypeId ? Number(form.plateTypeId) : undefined,
       plateNumber: form.plateNumber || undefined,
       plateFirstLetter: form.plateFirstLetter || '',
-      plateSecondLetter: form.plateSecondLetter || '',
-      plateThirdLetter: form.plateThirdLetter || '',
+      plateSecondLetter: form.plateSecondLetter || 'B',
+      plateThirdLetter: form.plateThirdLetter || 'J',
       registrationNumber: form.registrationNumber || undefined,
       registrationExpiryDate: form.registrationExpiryDate || undefined,
       inspectionExpiryDate: form.inspectionExpiryDate || undefined,
@@ -180,21 +211,21 @@ export default function FleetPage() {
       makeId: Number(form.makeId),
       modelId: Number(form.modelId),
       year: Number(form.year),
-      color: form.color || undefined,
-      vin: form.vin || undefined,
+      color: form.color || 'White',
+      vin: form.vin || 'UNKNOWN',
       engineNumber: form.engineNumber || undefined,
-      bodyType: form.bodyType ? Number(form.bodyType) : undefined,
-      category: form.category ? Number(form.category) : undefined,
+      bodyType: form.bodyType ? Number(form.bodyType) : 1,
+      category: form.category ? Number(form.category) : 1,
       seats: form.seats ? Number(form.seats) : undefined,
       cylinders: form.cylinders ? Number(form.cylinders) : undefined,
-      fuelType: form.fuelType ? Number(form.fuelType) : undefined,
-      transmissionType: form.transmissionType ? Number(form.transmissionType) : undefined,
+      fuelType: form.fuelType ? Number(form.fuelType) : 1,
+      transmissionType: form.transmissionType ? Number(form.transmissionType) : 1,
     },
     insurancePricing: {
       branchId: form.branchId ? Number(form.branchId) : undefined,
       insuranceCompanyId: form.insuranceCompanyId ? Number(form.insuranceCompanyId) : undefined,
       insuranceTypeId: form.insuranceTypeId ? Number(form.insuranceTypeId) : undefined,
-      insurancePolicyNumber: form.insurancePolicyNumber || undefined,
+      insurancePolicyNumber: form.insurancePolicyNumber || 'POL-0000',
       insuranceExpiryDate: form.insuranceExpiryDate || undefined,
       insuranceAmount: form.insuranceAmount ? Number(form.insuranceAmount) : undefined,
       dailyRate: form.dailyRate ? Number(form.dailyRate) : undefined,
@@ -213,7 +244,7 @@ export default function FleetPage() {
       fuelLevel: Types.FuelLevel.Full,
       enduranceAmount: 0,
       oilType: Types.VehicleOilType.Synthetic,
-      lastOilChangeDate: new Date().toISOString(),
+      lastOilChangeDate: new Date().toISOString().split('T')[0],
       oilChangeDistance: 0,
       airConditionGrade: Types.ConditionGrade.Good,
       radioStatus: Types.WorkingStatus.Working,
@@ -229,7 +260,14 @@ export default function FleetPage() {
       tireToolsStatus: Types.PresenceStatus.Available,
     },
     featureTypeIds: [] as number[],
-    images: [] as any[],
+    images: imageFileIds.length
+      ? imageFileIds.map((fileId: number, i: number) => ({
+          slotCode: i === 0 ? 'front' : `view-${i + 1}`,
+          fileId,
+          isPrimary: i === 0,
+          sortOrder: i + 1,
+        }))
+      : ([] as any[]),
     damagePoints: [] as any[],
   });
 
@@ -242,7 +280,20 @@ export default function FleetPage() {
 
     setSaving(true);
     try {
-      const payload = buildVehiclePayload();
+      // Upload selected vehicle images first, then merge with existing ones
+      let newImageFileIds: number[] = [];
+      if (vehicleImages.length > 0) {
+        const branchId = form.branchId ? Number(form.branchId) : undefined;
+        const uploadResults = await Promise.all(
+          vehicleImages.map((file) => attachmentService.upload(file, branchId))
+        );
+        newImageFileIds = uploadResults
+          .map((res) => res?.data?.id)
+          .filter((id): id is number => typeof id === 'number');
+      }
+
+      const imageFileIds = [...existingImageFileIds, ...newImageFileIds];
+      const payload = buildVehiclePayload(imageFileIds);
       if (editingVehicleId) {
         await vehicleService.update(editingVehicleId, payload);
         showToast(T('🟢 Vehicle updated successfully!', '🟢 تم تحديث السيارة بنجاح!', ar));
@@ -298,8 +349,23 @@ export default function FleetPage() {
       }
       const response = await vehicleService.search(searchRequest);
       console.log('Vehicles API response:', response);
+
+      // The search endpoint returns a summary; fetch full details for each vehicle
+      // so we get the images array.
+      const searchItems = response.items || response.data || [];
+      const detailedVehicles = await Promise.all(
+        searchItems.map(async (item: any) => {
+          try {
+            return await vehicleService.getById(item.id);
+          } catch (error) {
+            console.warn('Failed to load vehicle details for id', item.id, error);
+            return item;
+          }
+        })
+      );
+
       // Transform API response to match Car interface
-      const transformedVehicles = (response.items || response.data || []).map((item: any) => ({
+      const transformedVehicles = detailedVehicles.map((item: any) => ({
         id: item.id,
         name: `${item.makeName || ''} ${item.modelName || ''} ${item.year || ''}`.trim(),
         plate: item.plateNumber || '',
@@ -344,6 +410,16 @@ export default function FleetPage() {
         oilChangeDate: item.oilChangeDate,
         insuranceAmount: item.insuranceAmount,
         otherNotes: item.otherNotes,
+        imageUrls: item.images?.length
+          ? item.images
+              .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+              .map((img: any) => {
+                const fileId = img.fileId ?? img.id ?? img.attachmentId;
+                if (!fileId) console.warn('Vehicle image without fileId:', img);
+                return `/api/attachments/${fileId}/download`;
+              })
+              .filter(Boolean)
+          : undefined,
       }));
       setVehicles(transformedVehicles);
     } catch (error) {
@@ -530,7 +606,15 @@ export default function FleetPage() {
                 <Input label={T("Plate number", "رقم اللوحة", ar)} value={form.plateNumber} onChange={(e) => setForm((f: any) => ({ ...f, plateNumber: e.target.value }))} />
                 <Input label={T("Plate letters", "حروف اللوحة", ar)} placeholder="A B J" value={[form.plateFirstLetter, form.plateSecondLetter, form.plateThirdLetter].filter(Boolean).join(' ')}
                   onChange={(e) => {
-                    const [a1, a2, a3] = e.target.value.trim().split(/\s+/);
+                    const input = e.target.value.trim().replace(/\s+/g, ' ');
+                    const parts = input.split(' ');
+                    let a1 = '', a2 = '', a3 = '';
+                    if (parts.length === 1) {
+                      // User typed a single block like "ABJ" → split into individual letters
+                      [a1, a2, a3] = parts[0].split('').slice(0, 3);
+                    } else {
+                      [a1, a2, a3] = parts;
+                    }
                     setForm((f: any) => ({ ...f, plateFirstLetter: a1 || '', plateSecondLetter: a2 || '', plateThirdLetter: a3 || '' }));
                   }}
                 />
@@ -567,6 +651,33 @@ export default function FleetPage() {
                 <Input label={T("Full fuel rate", "سعر تعبئة الوقود", ar)} type="number" value={form.fullFuelRate} onChange={(e) => setForm((f: any) => ({ ...f, fullFuelRate: e.target.value }))} />
                 <Input label={T("Late hour rate", "سعر ساعة التأخير", ar)} type="number" value={form.lateHourRate} onChange={(e) => setForm((f: any) => ({ ...f, lateHourRate: e.target.value }))} />
               </div>
+
+              <div className="mk-body-sm text-mk-fg-1 mt-2">{T("Vehicle Photos", "صور السيارة", ar)}</div>
+              <div className="flex flex-col gap-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageChange}
+                  className="block w-full text-sm text-mk-ink-600 file:mr-3 file:py-2 file:px-3 file:rounded-sm file:border-0 file:bg-mk-blue-500 file:text-white hover:file:bg-mk-blue-600"
+                />
+                {vehicleImagePreviews.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {vehicleImagePreviews.map((preview, i) => (
+                      <div key={i} className="relative aspect-square rounded border border-mk-ink-200 overflow-hidden">
+                        <img src={preview} alt="" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(i)}
+                          className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center rounded-full bg-mk-danger text-white text-xs"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </form>
           </div>
 
@@ -590,7 +701,7 @@ function CarCard({ car, onEdit, onDelete }: { car: Car; onEdit: (car: Car) => vo
 
   const typeIcon = TYPE_ICON[car.type] ?? "🚗";
 
-  const images = CAR_IMAGES[car.model] || [];
+  const images = car.imageUrls?.length ? car.imageUrls : (CAR_IMAGES[car.model] || []);
   const [index, setIndex] = useState(0);
   const [startX, setStartX] = useState<number | null>(null);
   const [isDragging, setDragging] = useState(false);

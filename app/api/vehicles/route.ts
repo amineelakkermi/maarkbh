@@ -4,6 +4,7 @@ import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    console.log('Vehicle create payload:', JSON.stringify(body, null, 2));
     
     const response = await fetch('http://139.59.140.232/api/vehicles', {
       method: 'POST',

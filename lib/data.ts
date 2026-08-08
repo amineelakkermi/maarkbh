@@ -59,6 +59,9 @@ export interface Car {
   insurancePolicyNumber: string;
   insuranceExpiry: string;
   insuranceType: "شامل" | "ضد الغير";
+
+  // Real attachment image URLs from the backend (optional, overrides mock CAR_IMAGES)
+  imageUrls?: string[];
 }
 
 // ── Booking ─────────────────────────────────────────────────

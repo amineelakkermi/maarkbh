@@ -420,11 +420,12 @@ export const attachmentService = {
    * Upload single file
    * POST /api/attachments/upload
    */
-  async upload(file: File): Promise<any> {
+  async upload(file: File, branchId?: number): Promise<any> {
     const formData = new FormData();
     formData.append('file', file);
 
-    return apiClient.request('/api/attachments/upload', {
+    const endpoint = branchId ? `/attachments/upload?branchId=${branchId}` : '/attachments/upload';
+    return apiClient.request(endpoint, {
       method: 'POST',
       body: formData,
     });
@@ -440,7 +441,7 @@ export const attachmentService = {
       formData.append('files', file);
     });
 
-    return apiClient.request('/api/attachments/upload-multi', {
+    return apiClient.request('/attachments/upload-multi', {
       method: 'POST',
       body: formData,
     });
@@ -451,7 +452,7 @@ export const attachmentService = {
    * GET /api/attachments/{id}
    */
   async getById(id: number): Promise<any> {
-    return apiClient.request(`/api/attachments/${id}`, {
+    return apiClient.request(`/attachments/${id}`, {
       method: 'GET',
     });
   },
@@ -460,9 +461,12 @@ export const attachmentService = {
    * Download attachment
    * GET /api/attachments/{id}/download
    */
+  getDownloadUrl(id: number): string {
+    return `/api/attachments/${id}/download`;
+  },
+
   async download(id: number): Promise<Blob> {
-    // Same-origin request: the HttpOnly access-token cookie is sent automatically.
-    const response = await fetch(`/api/attachments/${id}/download`);
+    const response = await fetch(this.getDownloadUrl(id));
 
     if (!response.ok) {
       throw new Error('Download failed');
