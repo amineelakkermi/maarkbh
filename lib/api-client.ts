@@ -49,9 +49,9 @@ class ApiClient {
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
     
-    // Load token from localStorage on client side
+    // Load token from sessionStorage on client side (mirrors AuthContext's session lifecycle)
     if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem('access_token');
+      this.token = sessionStorage.getItem('access_token');
     }
   }
 
@@ -59,9 +59,9 @@ class ApiClient {
     this.token = token;
     if (typeof window !== 'undefined') {
       if (token) {
-        localStorage.setItem('access_token', token);
+        sessionStorage.setItem('access_token', token);
       } else {
-        localStorage.removeItem('access_token');
+        sessionStorage.removeItem('access_token');
       }
     }
   }

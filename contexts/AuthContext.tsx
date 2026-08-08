@@ -31,6 +31,7 @@ export interface AuthUser {
 
 interface AuthContextValue {
   isLoggedIn: boolean;
+  isInitialized: boolean;
   isLoading: boolean;
   authError: string | null;
   token: string | null;
@@ -44,6 +45,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue>({
   isLoggedIn: false,
+  isInitialized: false,
   isLoading: false,
   authError: null,
   token: null,
@@ -57,6 +59,7 @@ const AuthContext = createContext<AuthContextValue>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -81,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setDecodedToken(decoded);
         }
       }
+      setIsInitialized(true);
     }
   }, []);
 
@@ -205,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         isLoggedIn,
+        isInitialized,
         isLoading,
         authError,
         token,

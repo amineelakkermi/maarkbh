@@ -391,12 +391,23 @@ export const vehicleService = {
 
   /**
    * Create new vehicle
-   * POST /api/vehicles
+   * POST /api/vehicles (id: null)
    */
   async create(request: Types.VehicleRequest): Promise<any> {
     return apiClient.request('/vehicles', {
       method: 'POST',
-      body: request,
+      body: { ...request, id: null },
+    });
+  },
+
+  /**
+   * Update existing vehicle
+   * POST /api/vehicles (id: non-null) — same endpoint, distinguished by id in body.
+   */
+  async update(id: number, request: Types.VehicleRequest): Promise<any> {
+    return apiClient.request('/vehicles', {
+      method: 'POST',
+      body: { ...request, id },
     });
   },
 
@@ -639,6 +650,147 @@ export const vehicleModelService = {
    */
   async delete(id: number): Promise<void> {
     await apiClient.request(`/vehicle-models/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// ─── Plate Type Service ────────────────────────────────────────────
+
+export const plateTypeService = {
+  /**
+   * Search plate types
+   * POST /api/plate-types/search
+   */
+  async search(request: Types.VehicleLookupSearchRequest): Promise<any> {
+    return apiClient.request('/plate-types/search', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Create new plate type
+   * POST /api/plate-types
+   */
+  async create(request: Types.CreateVehicleLookupRequest): Promise<any> {
+    return apiClient.request('/plate-types', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Update plate type
+   * PUT /api/plate-types/{id}
+   */
+  async update(id: number, request: Types.UpdateVehicleLookupRequest): Promise<any> {
+    return apiClient.request(`/plate-types/${id}`, {
+      method: 'PUT',
+      body: request,
+    });
+  },
+
+  /**
+   * Delete plate type
+   * DELETE /api/plate-types/{id}
+   */
+  async delete(id: number): Promise<void> {
+    await apiClient.request(`/plate-types/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// ─── Insurance Company Service ─────────────────────────────────────
+
+export const insuranceCompanyService = {
+  /**
+   * Search insurance companies
+   * POST /api/insurance-companies/search
+   */
+  async search(request: Types.VehicleLookupSearchRequest): Promise<any> {
+    return apiClient.request('/insurance-companies/search', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Create new insurance company
+   * POST /api/insurance-companies
+   */
+  async create(request: Types.CreateVehicleLookupRequest): Promise<any> {
+    return apiClient.request('/insurance-companies', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Update insurance company
+   * PUT /api/insurance-companies/{id}
+   */
+  async update(id: number, request: Types.UpdateVehicleLookupRequest): Promise<any> {
+    return apiClient.request(`/insurance-companies/${id}`, {
+      method: 'PUT',
+      body: request,
+    });
+  },
+
+  /**
+   * Delete insurance company
+   * DELETE /api/insurance-companies/{id}
+   */
+  async delete(id: number): Promise<void> {
+    await apiClient.request(`/insurance-companies/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// ─── Insurance Type Service ─────────────────────────────────────────
+
+export const insuranceTypeService = {
+  /**
+   * Search insurance types
+   * POST /api/insurance-types/search
+   */
+  async search(request: Types.VehicleLookupSearchRequest): Promise<any> {
+    return apiClient.request('/insurance-types/search', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Create new insurance type
+   * POST /api/insurance-types
+   */
+  async create(request: Types.CreateVehicleLookupRequest): Promise<any> {
+    return apiClient.request('/insurance-types', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
+   * Update insurance type
+   * PUT /api/insurance-types/{id}
+   */
+  async update(id: number, request: Types.UpdateVehicleLookupRequest): Promise<any> {
+    return apiClient.request(`/insurance-types/${id}`, {
+      method: 'PUT',
+      body: request,
+    });
+  },
+
+  /**
+   * Delete insurance type
+   * DELETE /api/insurance-types/{id}
+   */
+  async delete(id: number): Promise<void> {
+    await apiClient.request(`/insurance-types/${id}`, {
       method: 'DELETE',
     });
   },

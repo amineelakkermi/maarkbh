@@ -15,8 +15,13 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      console.error('Vehicle create failed:', response.status, JSON.stringify(errorData));
       return NextResponse.json(
-        { error: errorData?.message || 'Failed to create vehicle' },
+        {
+          error: errorData?.message || errorData?.title || 'Failed to create vehicle',
+          errors: errorData?.errors,
+          details: errorData,
+        },
         { status: response.status }
       );
     }

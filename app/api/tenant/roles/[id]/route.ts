@@ -67,7 +67,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       );
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : { success: true };
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error updating role:', error);

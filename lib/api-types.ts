@@ -268,7 +268,6 @@ export enum ConditionGrade {
   Excellent = 1,
   Good = 2,
   Weak = 3,
-  NotWorking = 4,
 }
 
 export enum WorkingStatus {
@@ -277,8 +276,8 @@ export enum WorkingStatus {
 }
 
 export enum CleanlinessStatus {
-  Clean = 6,
-  Dirty = 7,
+  Clean = 1,
+  Dirty = 2,
 }
 
 export enum TireCondition {
@@ -293,11 +292,11 @@ export enum PresenceStatus {
 }
 
 export enum FuelLevel {
-  Full = 1,
-  ThreeQuarters = 2,
-  Half = 3,
-  Quarter = 4,
-  Empty = 5,
+  Full = 0,
+  ThreeQuarters = 1,
+  Half = 2,
+  Quarter = 3,
+  Empty = 4,
 }
 
 export enum VehicleOilType {
@@ -332,8 +331,18 @@ export interface TajeerStatusRequest {
 }
 
 export interface InsurancePricingRequest {
-  // Add insurance pricing fields based on swagger
-  [key: string]: any;
+  branchId?: number;
+  insuranceCompanyId?: number;
+  insuranceTypeId?: number;
+  insurancePolicyNumber?: string;
+  insuranceExpiryDate?: string;
+  insuranceAmount?: number;
+  dailyRate?: number;
+  extraKilometerRate?: number;
+  fullFuelRate?: number;
+  lateHourRate?: number;
+  isKilometerLimitEnabled?: boolean;
+  dailyKilometerLimit?: number;
 }
 
 export interface VehicleRequest {

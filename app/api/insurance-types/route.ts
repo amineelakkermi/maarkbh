@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    const response = await fetch('http://139.59.140.232/api/tenant/roles', {
+
+    const response = await fetch('http://139.59.140.232/api/insurance-types', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -16,16 +16,15 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       return NextResponse.json(
-        { error: errorData?.message || 'Failed to create role' },
+        { error: errorData?.message || 'Failed to create insurance type' },
         { status: response.status }
       );
     }
 
-    const text = await response.text();
-    const data = text ? JSON.parse(text) : { success: true };
+    const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error creating role:', error);
+    console.error('Error creating insurance type:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
