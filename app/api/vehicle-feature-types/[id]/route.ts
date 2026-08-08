@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const featureTypeId = Number((await params).id);
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const response = await fetch(`http://139.59.140.232/api/vehicle-feature-types/${featureTypeId}`, {
       method: 'GET',
       headers: {
-        'Authorization': request.headers.get('Authorization') || '',
+'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
     });
 
@@ -52,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': request.headers.get('Authorization') || '',
+'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
       body: JSON.stringify(body),
     });
@@ -89,7 +90,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const response = await fetch(`http://139.59.140.232/api/vehicle-feature-types/${featureTypeId}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': request.headers.get('Authorization') || '',
+'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
     });
 

@@ -44,30 +44,49 @@ interface RequestOptions {
 
 class ApiClient {
   private baseUrl: string;
-  private token: string | null = null;
+  private refreshPromise: Promise<boolean> | null = null;
 
   constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
-    
-    // Load token from sessionStorage on client side (mirrors AuthContext's session lifecycle)
-    if (typeof window !== 'undefined') {
-      this.token = sessionStorage.getItem('access_token');
+    // No token bootstrap needed anymore: the access token lives in an
+    // HttpOnly cookie set by the server and is sent automatically by the
+    // browser with every same-origin request.
+  }
+
+  // Refreshes the access token via the server-side refresh route. The
+  // refresh token itself is an HttpOnly cookie, so no body is needed here —
+  // the browser attaches it automatically.
+  // Uses a single in-flight promise so concurrent 401s only trigger one refresh call.
+  private async refreshAccessToken(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        try {
+          const response = await fetch('/api/auth/refresh', { method: 'POST' });
+          return response.ok;
+        } catch {
+          return false;
+        }
+      })();
+    }
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
     }
   }
 
-  setToken(token: string | null) {
-    this.token = token;
-    if (typeof window !== 'undefined') {
-      if (token) {
-        sessionStorage.setItem('access_token', token);
-      } else {
-        sessionStorage.removeItem('access_token');
-      }
+  // Clears the session (server-side cookie removal) and hard-redirects to the login page.
+  private async forceLogout() {
+    if (typeof window === 'undefined') return;
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore network errors here — we're logging out regardless.
     }
-  }
-
-  getToken(): string | null {
-    return this.token;
+    window.location.href = '/';
   }
 
   private buildUrl(endpoint: string, params?: Record<string, string | number | undefined>): string {
@@ -97,19 +116,17 @@ class ApiClient {
   }
 
   private buildHeaders(options: RequestOptions): Record<string, string> {
+    // Auth is no longer attached manually: the HttpOnly access-token cookie
+    // is sent automatically by the browser on same-origin requests.
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
 
-    if (options.requiresAuth !== false && this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
     return headers;
   }
 
-  async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  async request<T>(endpoint: string, options: RequestOptions = {}, isRetry: boolean = false): Promise<T> {
     const {
       method = 'GET',
       body,
@@ -138,6 +155,15 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
+
+      if (response.status === 401 && requiresAuth !== false && !isRetry) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) {
+          return this.request<T>(endpoint, options, true);
+        }
+        this.forceLogout();
+        throw new ApiError('Session expired', 401);
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);

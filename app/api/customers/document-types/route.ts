@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 
 export async function GET(request: NextRequest){
     try{
     const response = await fetch('http://139.59.140.232/api/customers/document-types' , {
     method: 'GET',
     headers: { 
-        'Authorization': request.headers.get('Authorization') || '',
+        'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`,
      }
      });
 

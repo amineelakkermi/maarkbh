@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ name: string; roleId: string }> }) {
   try {
@@ -6,8 +7,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     const response = await fetch(`http://139.59.140.232/api/tenant/roles/name-exists/${name}/${roleId}`, {
       method: 'GET',
-      headers: {
-        'Authorization': request.headers.get('Authorization') || '',
+      headers: { 
+'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
     });
 

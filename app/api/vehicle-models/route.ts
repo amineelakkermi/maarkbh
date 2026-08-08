@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': request.headers.get('Authorization') || '',
+'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
       body: JSON.stringify(body),
     });

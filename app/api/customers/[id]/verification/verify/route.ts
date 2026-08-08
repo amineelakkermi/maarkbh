@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAccessTokenFromRequest } from '@/lib/auth-cookies';
 
 export async function POST(request: NextRequest , { params }: { params: Promise<{ id: string }> }){
     
@@ -14,7 +15,7 @@ export async function POST(request: NextRequest , { params }: { params: Promise<
         const response = await fetch(`http://139.59.140.232/api/customers/${customerId}/verification/verify`, {
         method: 'POST',
         headers: {
-        'Authorization': request.headers.get('Authorization') || '',
+       'Authorization': `Bearer ${getAccessTokenFromRequest(request) || ''}`
       },
         });
 

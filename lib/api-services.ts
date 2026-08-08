@@ -7,13 +7,22 @@ import { apiClient } from './api-client';
 import * as Types from './api-types';
 
 // ─── Authorization Service ─────────────────────────────────────
+// Tokens are stored as HttpOnly cookies set by the Next.js route handlers
+// (app/api/auth/login|refresh|logout|me). This service never sees or stores
+// raw tokens — it only receives the decoded (non-sensitive) user claims.
+
+export interface AuthSessionResponse {
+  success: boolean;
+  user: Record<string, any> | null;
+}
 
 export const authService = {
   /**
-   * Authenticate user and get access token
-   * POST /connect/token
+   * Authenticate user. The server sets HttpOnly cookies (access/refresh/id
+   * token) and returns only the decoded user claims.
+   * POST /connect/token (proxied)
    */
-  async login(credentials: Types.TokenRequest): Promise<Types.TokenResponse> {
+  async login(credentials: Types.TokenRequest): Promise<AuthSessionResponse> {
     const formData = new URLSearchParams();
     formData.append('grant_type', credentials.grant_type);
     formData.append('username', credentials.username);
@@ -33,61 +42,39 @@ export const authService = {
       throw new Error(errorData?.error_description || errorData?.error || errorData?.details || 'Authentication failed');
     }
 
-    const data = await response.json();
-
-    // Store token in client
-    if (data.access_token) {
-      apiClient.setToken(data.access_token);
-    }
-
-    return data;
+    return response.json();
   },
 
   /**
-   * Logout user and clear token
+   * Logout user: clears the HttpOnly auth cookies server-side.
    */
-  logout(): void {
-    apiClient.setToken(null);
+  async logout(): Promise<void> {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   },
 
   /**
-   * Get current access token
+   * Fetches the current session state (isLoggedIn + decoded user claims)
+   * from the server, since the client can no longer read the cookies directly.
    */
-  getToken(): string | null {
-    return apiClient.getToken();
+  async getSession(): Promise<{ isLoggedIn: boolean; user: Record<string, any> | null }> {
+    const response = await fetch('/api/auth/me');
+    if (!response.ok) return { isLoggedIn: false, user: null };
+    return response.json();
   },
 
   /**
-   * Refresh access token using refresh token
-   * POST /connect/token
+   * Refresh access token using the HttpOnly refresh-token cookie.
+   * POST /connect/token (proxied)
    */
-  async refreshToken(credentials: Types.RefreshTokenRequest): Promise<Types.TokenResponse> {
-    const formData = new URLSearchParams();
-    formData.append('grant_type', credentials.grant_type);
-    formData.append('refresh_token', credentials.refresh_token);
-
-    // Use Next.js API route as proxy to avoid CORS
-    const response = await fetch('/api/auth/refresh', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
+  async refreshToken(): Promise<AuthSessionResponse> {
+    const response = await fetch('/api/auth/refresh', { method: 'POST' });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       throw new Error(errorData?.error_description || errorData?.error || 'Token refresh failed');
     }
 
-    const data = await response.json();
-    
-    // Store token in client
-    if (data.access_token) {
-      apiClient.setToken(data.access_token);
-    }
-
-    return data;
+    return response.json();
   },
 };
 
@@ -99,18 +86,11 @@ export const accountService = {
    * POST /api/account/change-password
    */
   async changePassword(request: Types.ChangePasswordRequest): Promise<void> {
-    // Get token from sessionStorage (same as AuthContext)
-    const token = typeof window !== 'undefined' ? sessionStorage.getItem('mk_token') : null;
-    
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
+    // Same-origin request: the HttpOnly access-token cookie is sent automatically.
     const response = await fetch('/api/account/change-password', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(request),
     });
@@ -481,11 +461,8 @@ export const attachmentService = {
    * GET /api/attachments/{id}/download
    */
   async download(id: number): Promise<Blob> {
-    const response = await fetch(`${apiClient['baseUrl']}/api/attachments/${id}/download`, {
-      headers: {
-        Authorization: `Bearer ${apiClient.getToken()}`,
-      },
-    });
+    // Same-origin request: the HttpOnly access-token cookie is sent automatically.
+    const response = await fetch(`/api/attachments/${id}/download`);
 
     if (!response.ok) {
       throw new Error('Download failed');

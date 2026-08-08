@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { setAuthCookies, decodeJwtPayload } from '@/lib/auth-cookies';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +23,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(data, { status: response.status });
     }
 
-    return NextResponse.json(data);
+    // Never expose raw tokens to client-side JS: store them as HttpOnly cookies
+    // and only return the decoded (non-sensitive) user claims.
+    const user = data.id_token ? decodeJwtPayload(data.id_token) : null;
+    const res = NextResponse.json({ success: true, user });
+    setAuthCookies(res, {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      idToken: data.id_token,
+      expiresIn: data.expires_in,
+    });
+    return res;
   } catch (error) {
     console.error('❌ Login route error:', error);
     return NextResponse.json(

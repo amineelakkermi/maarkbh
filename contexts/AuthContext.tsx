@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { authService } from "@/lib/api-services";
-import { ApiError, decodeJWT } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import * as Types from "@/lib/api-types";
 
 // ─── JWT Token Claims Model ───────────────────────────────────────────
@@ -34,8 +34,6 @@ interface AuthContextValue {
   isInitialized: boolean;
   isLoading: boolean;
   authError: string | null;
-  token: string | null;
-  refreshToken: string | null;
   decodedToken: AuthUser | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
@@ -48,8 +46,6 @@ const AuthContext = createContext<AuthContextValue>({
   isInitialized: false,
   isLoading: false,
   authError: null,
-  token: null,
-  refreshToken: null,
   decodedToken: null,
   login: async () => {},
   logout: () => {},
@@ -62,30 +58,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [decodedToken, setDecodedToken] = useState<AuthUser | null>(null);
 
-  // Load session from sessionStorage on mount
+  // Tokens now live only in HttpOnly cookies set by the server — the client
+  // can't read them directly. On mount, ask the server for the current
+  // session state instead of reading sessionStorage.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const logged = sessionStorage.getItem("mk_logged") === "true";
-      const savedToken = sessionStorage.getItem("mk_token");
-      const savedRefreshToken = sessionStorage.getItem("mk_refresh_token");
-      
-      if (logged && savedToken) {
-        setIsLoggedIn(true);
-        setToken(savedToken);
-        setRefreshToken(savedRefreshToken);
-        // Try to decode the token if available
-        const idToken = sessionStorage.getItem("mk_id_token");
-        if (idToken) {
-          const decoded = decodeJWT(idToken);
-          setDecodedToken(decoded);
-        }
-      }
-      setIsInitialized(true);
-    }
+    let cancelled = false;
+
+    authService.getSession()
+      .then(({ isLoggedIn: loggedIn, user }) => {
+        if (cancelled) return;
+        setIsLoggedIn(loggedIn);
+        setDecodedToken(loggedIn ? (user as AuthUser) : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoggedIn(false);
+        setDecodedToken(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsInitialized(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (username: string, password: string) => {
@@ -93,49 +91,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
 
     try {
-      const tokenResponse = await authService.login({
+      const { user } = await authService.login({
         grant_type: 'password',
         username,
         password,
       });
 
-      // Decode id_token to get user information
-      const decoded = tokenResponse.id_token ? decodeJWT(tokenResponse.id_token) : null;
-
-      // Store the session ONLY on success
+      // Cookies are already set server-side at this point; just reflect the
+      // resulting session in React state.
       setIsLoggedIn(true);
-      setToken(tokenResponse.access_token);
-      setRefreshToken(tokenResponse.refresh_token || null);
-      setDecodedToken(decoded);
-      
-      sessionStorage.setItem("mk_logged", "true");
-      sessionStorage.setItem("mk_username", username);
-      sessionStorage.setItem("mk_token", tokenResponse.access_token);
-      if (tokenResponse.refresh_token) {
-        sessionStorage.setItem("mk_refresh_token", tokenResponse.refresh_token);
-      }
-      if (tokenResponse.id_token) {
-        sessionStorage.setItem("mk_id_token", tokenResponse.id_token);
-      }
+      setDecodedToken(user as AuthUser);
     } catch (error) {
       console.error("Login error:", error);
-      // Ensure user is NOT logged in on error
       setIsLoggedIn(false);
-      setToken(null);
-      setRefreshToken(null);
       setDecodedToken(null);
-      
-      // Clear any existing session
-      sessionStorage.removeItem("mk_logged");
-      sessionStorage.removeItem("mk_username");
-      sessionStorage.removeItem("mk_token");
-      sessionStorage.removeItem("mk_refresh_token");
-      sessionStorage.removeItem("mk_id_token");
-      
+
       // Translate technical errors to user-friendly Arabic messages
       let userFriendlyMessage = "حدث خطأ غير متوقع";
-     
-      
+
       setAuthError(userFriendlyMessage);
       // Re-throw the error so the caller can handle it
       throw error;
@@ -146,51 +119,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setIsLoggedIn(false);
-    setToken(null);
-    setRefreshToken(null);
     setDecodedToken(null);
     setAuthError(null);
-    
-    sessionStorage.removeItem("mk_logged");
-    sessionStorage.removeItem("mk_username");
-    sessionStorage.removeItem("mk_token");
-    sessionStorage.removeItem("mk_refresh_token");
-    sessionStorage.removeItem("mk_id_token");
-    
     authService.logout();
   };
 
   const refreshAccessToken = async () => {
-    const currentRefreshToken = refreshToken || sessionStorage.getItem("mk_refresh_token");
-    
-    if (!currentRefreshToken) {
-      throw new Error("No refresh token available");
-    }
-
     setIsLoading(true);
     setAuthError(null);
 
     try {
-      const tokenResponse = await authService.refreshToken({
-        grant_type: 'refresh_token',
-        refresh_token: currentRefreshToken,
-      });
-
-      // Update tokens
-      setToken(tokenResponse.access_token);
-      setRefreshToken(tokenResponse.refresh_token || currentRefreshToken);
-      
-      const decoded = tokenResponse.id_token ? decodeJWT(tokenResponse.id_token) : null;
-      setDecodedToken(decoded);
-
-      // Update sessionStorage
-      sessionStorage.setItem("mk_token", tokenResponse.access_token);
-      if (tokenResponse.refresh_token) {
-        sessionStorage.setItem("mk_refresh_token", tokenResponse.refresh_token);
-      }
-      if (tokenResponse.id_token) {
-        sessionStorage.setItem("mk_id_token", tokenResponse.id_token);
-      }
+      const { user } = await authService.refreshToken();
+      setIsLoggedIn(true);
+      setDecodedToken(user as AuthUser);
     } catch (error) {
       console.error("Token refresh error:", error);
       // If refresh fails, logout the user
@@ -212,8 +153,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isInitialized,
         isLoading,
         authError,
-        token,
-        refreshToken,
         decodedToken,
         login,
         logout,
