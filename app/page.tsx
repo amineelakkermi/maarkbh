@@ -202,7 +202,7 @@ export default function RootPortalPage() {
                       setError(null);
                     }}
                     placeholder="أدخل اسم المستخدم"
-                    className="w-full px-4 py-4 rounded-md bg-white/[0.04] border border-white/15 focus:border-mk-blue-500 focus:bg-white/[0.08] text-white mk-body outline-none transition-all focus:shadow-[0_0_0_3px_rgba(65,113,226,0.18)] placeholder:text-white/20"
+                    className="w-full px-4 py-4 rounded-md bg-white/[0.04] border border-white/15 focus:border-mk-blue-500 focus:bg-white/[0.08] !text-mk-white mk-body outline-none transition-all focus:shadow-[0_0_0_3px_rgba(65,113,226,0.18)] placeholder:text-mk-white/60"
                     autoFocus
                   />
                 </div>
@@ -219,7 +219,7 @@ export default function RootPortalPage() {
                       setError(null);
                     }}
                     placeholder="أدخل كلمة المرور"
-                    className="w-full px-4 py-4 rounded-md bg-white/[0.04] border border-white/15 focus:border-mk-blue-500 focus:bg-white/[0.08] text-white mk-body outline-none transition-all focus:shadow-[0_0_0_3px_rgba(65,113,226,0.18)] placeholder:text-white/20"
+                    className="w-full px-4 py-4 rounded-md bg-white/[0.04] border border-white/15 focus:border-mk-blue-500 focus:bg-white/[0.08] !text-mk-white mk-body outline-none transition-all focus:shadow-[0_0_0_3px_rgba(65,113,226,0.18)] placeholder:text-mk-white/60"
                   />
                 </div>
 
