@@ -20,13 +20,25 @@ export async function POST(request: NextRequest) {
     });
 
     const text = await response.text();
-    const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
-      return NextResponse.json(data || { error: response.statusText }, { status: response.status });
+      console.error('Attachment upload failed:', {
+        url: backendUrl.toString(),
+        status: response.status,
+        body: text,
+      });
+      return NextResponse.json(
+        { error: text || response.statusText, status: response.status },
+        { status: response.status }
+      );
     }
 
-    return NextResponse.json(data);
+    try {
+      return NextResponse.json(text ? JSON.parse(text) : null);
+    } catch {
+      console.error('Attachment upload returned non-JSON body:', text);
+      return NextResponse.json({ error: 'Unexpected upload response', body: text }, { status: 502 });
+    }
   } catch (error) {
     console.error('Attachment upload error:', error);
     return NextResponse.json(

@@ -371,12 +371,12 @@ export const vehicleService = {
 
   /**
    * Create new vehicle
-   * POST /api/vehicles (id: null)
+   * POST /api/vehicles
    */
   async create(request: Types.VehicleRequest): Promise<any> {
     return apiClient.request('/vehicles', {
       method: 'POST',
-      body: { ...request, id: null },
+      body: request,
     });
   },
 

@@ -18,8 +18,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (!response.ok) {
       const text = await response.text();
-      const data = text ? JSON.parse(text) : null;
-      return NextResponse.json(data || { error: response.statusText }, { status: response.status });
+      console.error('Attachment download failed:', {
+        url: backendUrl.toString(),
+        status: response.status,
+        body: text,
+      });
+      return NextResponse.json(
+        { error: text || response.statusText, status: response.status },
+        { status: response.status }
+      );
     }
 
     const blob = await response.blob();
