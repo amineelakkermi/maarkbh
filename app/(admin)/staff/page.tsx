@@ -97,8 +97,9 @@ export default function StaffPage() {
 
   const loadRoleOptions = async () => {
     try {
-      const response = await tenantRoleService.lookup();
-      setRoleOptions(response || []);
+      const response = await tenantRoleService.search({});
+      console.log('Role options API response:', response);
+      setRoleOptions(response.items || response.data || []);
     } catch (error) {
       console.error('Error loading role options:', error);
     }
@@ -522,7 +523,7 @@ export default function StaffPage() {
             <form onSubmit={handleUpdateUser} className="flex flex-col gap-4 mt-5">
               <Input
                 label={T("Full Name *", "الاسم الكامل *", ar)}
-                placeholder={T("e.g. Sara Al-Otaibi", "مثال: سارة العتيبي", ar)}
+                placeholder={T("Enter full name", "ادخل الاسم الكامل", ar)}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
