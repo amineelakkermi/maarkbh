@@ -890,6 +890,16 @@ export const tenantRoleService = {
   },
 
   /**
+   * Get tenant roles lookup (assignable role names)
+   * GET /api/tenant/roles/lookup
+   */
+  async lookup(): Promise<any> {
+    return apiClient.request('/tenant/roles/lookup', {
+      method: 'GET',
+    });
+  },
+
+  /**
    * Create tenant role
    * POST /api/tenant/roles
    */

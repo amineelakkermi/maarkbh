@@ -97,9 +97,13 @@ export default function StaffPage() {
 
   const loadRoleOptions = async () => {
     try {
-      const response = await tenantRoleService.search({});
+      // Use the tenant roles lookup (assignable role names for this tenant)
+      const response = await tenantRoleService.lookup();
       console.log('Role options API response:', response);
-      setRoleOptions(response.items || response.data || []);
+      const items = Array.isArray(response) ? response : (response.items || response.data || []);
+      setRoleOptions(items.map((r: any) =>
+        typeof r === 'string' ? { name: r, displayName: r } : r
+      ));
     } catch (error) {
       console.error('Error loading role options:', error);
     }
