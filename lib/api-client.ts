@@ -169,7 +169,7 @@ class ApiClient {
         const errorData = await response.json().catch(() => null);
         console.error('❌ API Error:', errorData);
         throw new ApiError(
-          errorData?.message || errorData?.title || `HTTP ${response.status}`,
+          errorData?.message || errorData?.title || errorData?.error || `HTTP ${response.status}`,
           response.status,
           errorData
         );

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       console.error('Vehicle create/update failed:', { status: response.status, body: responseText });
       return NextResponse.json(
         {
-          error: errorData?.message || errorData?.title || responseText || 'Failed to save vehicle',
+          error: errorData?.message || errorData?.title || errorData?.error || responseText || 'Failed to save vehicle',
           errors: errorData?.errors,
           details: errorData,
         },

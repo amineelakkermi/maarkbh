@@ -98,10 +98,18 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       },
     });
 
+    const responseText = await response.text();
+
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
+      let errorData = null;
+      try { errorData = responseText ? JSON.parse(responseText) : null; } catch {}
+      console.error('Role delete failed:', { status: response.status, body: responseText });
       return NextResponse.json(
-        { error: errorData?.message || 'Failed to delete role' },
+        {
+          error: errorData?.message || errorData?.title || errorData?.error || responseText || 'Failed to delete role',
+          errors: errorData?.errors,
+          details: errorData,
+        },
         { status: response.status }
       );
     }

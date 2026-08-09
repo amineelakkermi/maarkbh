@@ -113,9 +113,18 @@ export default function RolesPage() {
       await tenantRoleService.delete(id);
       loadRoles();
       showToast(T("Role deleted successfully", "تم حذف الدور بنجاح", ar));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting role:', error);
-      alert(ar ? 'فشل حذف الدور' : 'Failed to delete role');
+      const rawMsg: string = error?.message || error?.response?.error || '';
+      let msg = ar ? 'فشل حذف الدور' : 'Failed to delete role';
+      if (/assigned to users/i.test(rawMsg)) {
+        msg = ar
+          ? 'لا يمكن حذف دور مُسند إلى مستخدمين'
+          : 'Cannot delete a role that is assigned to users';
+      } else if (rawMsg) {
+        msg = rawMsg;
+      }
+      showToast(msg);
     }
   };
 
