@@ -138,7 +138,7 @@ export default function RolesPage() {
 
   const handleUpdateRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) {
+    if (!name || selectedPermissions.length === 0) {
       showToast(T("Please fill all mandatory fields", "الرجاء تعبئة الحقول الإلزامية", ar));
       return;
     }
