@@ -384,7 +384,7 @@ export function VehicleDetailsPage({
                       onChange={(e) => setForm((f: any) => ({ ...f, engineNumber: e.target.value }))}
                     />
                     <Input
-                      label={T("Seats", "عدد المقاعد", ar)}
+                      label={T("Seats *", "عدد المقاعد *", ar)}
                       type="number"
                       value={form.seats}
                       onChange={(e) => setForm((f: any) => ({ ...f, seats: e.target.value }))}
@@ -463,7 +463,7 @@ export function VehicleDetailsPage({
                       ))}
                     </Select>
                     <Select
-                      label={T("Insurance company", "شركة التأمين", ar)}
+                      label={T("Insurance company *", "شركة التأمين *", ar)}
                       value={form.insuranceCompanyId}
                       onChange={(e) => setForm((f: any) => ({ ...f, insuranceCompanyId: e.target.value }))}
                     >
@@ -475,7 +475,7 @@ export function VehicleDetailsPage({
                       ))}
                     </Select>
                     <Select
-                      label={T("Insurance type", "نوع التأمين", ar)}
+                      label={T("Insurance type *", "نوع التأمين *", ar)}
                       value={form.insuranceTypeId}
                       onChange={(e) => setForm((f: any) => ({ ...f, insuranceTypeId: e.target.value }))}
                     >
@@ -498,7 +498,7 @@ export function VehicleDetailsPage({
                       onChange={(e) => setForm((f: any) => ({ ...f, insuranceExpiryDate: e.target.value }))}
                     />
                     <Input
-                      label={T("Insurance amount", "قيمة التأمين", ar)}
+                      label={T("Insurance amount *", "قيمة التأمين *", ar)}
                       type="number"
                       value={form.insuranceAmount}
                       onChange={(e) => setForm((f: any) => ({ ...f, insuranceAmount: e.target.value }))}

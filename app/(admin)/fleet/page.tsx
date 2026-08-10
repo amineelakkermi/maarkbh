@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Car, CarStatus } from "@/lib/data";
 import { Search, Plus, Loader2 } from "lucide-react";
-import { Button, Tabs, Input, useToast } from "@/components/ui";
+import { Button, Tabs, Input, useToast, Modal } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
 import { vehicleService, attachmentService } from "@/lib/api-services";
 import {
@@ -39,6 +39,9 @@ export default function FleetPage() {
   const [vehicleImages, setVehicleImages] = useState<File[]>([]);
   const [vehicleImagePreviews, setVehicleImagePreviews] = useState<string[]>([]);
   const [existingImageFileIds, setExistingImageFileIds] = useState<number[]>([]);
+
+  const [deleteTarget, setDeleteTarget] = useState<Car | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const { makes, models, branches, plateTypes, insuranceCompanies, insuranceTypes } =
     useVehicleLookups(form.makeId);
@@ -177,14 +180,23 @@ export default function FleetPage() {
     }
   };
 
-  const handleDeleteVehicle = async (car: Car) => {
+  const handleDeleteVehicle = (car: Car) => {
+    setDeleteTarget(car);
+  };
+
+  const confirmDeleteVehicle = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
     try {
-      await vehicleService.delete(car.id);
+      await vehicleService.delete(deleteTarget.id);
       showToast(T("🗑️ Vehicle deleted", "🗑️ تم حذف السيارة", ar));
+      setDeleteTarget(null);
       await loadVehicles();
     } catch (error) {
       console.error("Error deleting vehicle:", error);
       showToast(T("Failed to delete vehicle", "فشل حذف السيارة", ar));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -431,6 +443,33 @@ export default function FleetPage() {
           </span>
         </div>
       </div>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        variant="centered"
+        size="sm"
+        title={T("Delete vehicle", "حذف السيارة", ar)}
+      >
+        <div className="p-5 flex flex-col gap-5">
+          <p className="mk-body-sm text-mk-ink-700">
+            {T(
+              `Are you sure you want to delete "${deleteTarget?.name ?? ""}"? This action cannot be undone.`,
+              `هل أنت متأكد من حذف "${deleteTarget?.name ?? ""}"؟ لا يمكن التراجع عن هذا الإجراء.`,
+              ar
+            )}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              {T("Cancel", "إلغاء", ar)}
+            </Button>
+            <Button variant="danger" size="sm" onClick={confirmDeleteVehicle} disabled={deleting}>
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : null}
+              {T("Delete", "حذف", ar)}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
     </div>
   );
