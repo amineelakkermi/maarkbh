@@ -19,7 +19,7 @@ import {
 } from "@/lib/fleet";
 import { useVehicleLookups } from "@/hooks/useVehicleLookups";
 import { CarCard } from "@/components/fleet/CarCard";
-import { VehicleForm } from "@/components/fleet/VehicleForm";
+import { VehicleDetailsPage } from "@/components/fleet/VehicleDetailsPage";
 
 export default function FleetPage() {
   const { dir } = useAdmin();
@@ -31,12 +31,10 @@ export default function FleetPage() {
   const [vehicles, setVehicles] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [isDrawerOpen, setDrawerOpen] = useState(false);
+  const [isDetailsOpen, setDetailsOpen] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>(emptyVehicleForm());
-  const [step, setStep] = useState(1);
-  const totalSteps = 5;
 
   const [vehicleImages, setVehicleImages] = useState<File[]>([]);
   const [vehicleImagePreviews, setVehicleImagePreviews] = useState<string[]>([]);
@@ -55,13 +53,12 @@ export default function FleetPage() {
     setVehicleImages([]);
     setVehicleImagePreviews([]);
     setExistingImageFileIds([]);
-    setStep(1);
   };
 
   const handleAddVehicle = () => {
     setEditingVehicleId(null);
     resetForm();
-    setDrawerOpen(true);
+    setDetailsOpen(true);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,13 +87,12 @@ export default function FleetPage() {
     setEditingVehicleId(car.id);
     setVehicleImages([]);
     setVehicleImagePreviews([]);
-    setStep(1);
     try {
       const v = await vehicleService.getById(car.id);
       console.log("Vehicle detail response:", v);
       setExistingImageFileIds(extractVehicleImageFileIds(v));
       setForm(mapVehicleToForm(v));
-      setDrawerOpen(true);
+      setDetailsOpen(true);
     } catch (error) {
       console.error("Error loading vehicle details:", error);
       showToast(T("Failed to load vehicle details", "فشل تحميل تفاصيل السيارة", ar));
@@ -107,11 +103,9 @@ export default function FleetPage() {
   const handleSaveVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     if (saving) return;
-    if (step !== totalSteps) return;
 
-    for (let s = 1; s <= totalSteps; s++) {
+    for (let s = 1; s <= 4; s++) {
       if (!validateStep(form, s, ar, showToast)) {
-        setStep(s);
         return;
       }
     }
@@ -170,7 +164,7 @@ export default function FleetPage() {
         }
         showToast(T("🟢 Vehicle created successfully!", "🟢 تم إضافة السيارة بنجاح!", ar));
       }
-      setDrawerOpen(false);
+      setDetailsOpen(false);
       setEditingVehicleId(null);
       resetForm();
       await loadVehicles();
@@ -316,6 +310,35 @@ export default function FleetPage() {
     inactive: vehicles.filter((c) => c.status === "inactive").length,
   };
 
+  if (isDetailsOpen) {
+    return (
+      <VehicleDetailsPage
+        editingVehicleId={editingVehicleId}
+        saving={saving}
+        form={form}
+        setForm={setForm}
+        makes={makes}
+        models={models}
+        plateTypes={plateTypes}
+        branches={branches}
+        insuranceCompanies={insuranceCompanies}
+        insuranceTypes={insuranceTypes}
+        vehicleImages={vehicleImages}
+        vehicleImagePreviews={vehicleImagePreviews}
+        existingImageFileIds={existingImageFileIds}
+        onImageChange={handleImageChange}
+        onRemoveImage={removeImage}
+        onRemoveExistingImage={removeExistingImage}
+        onBack={() => {
+          setDetailsOpen(false);
+          setEditingVehicleId(null);
+          resetForm();
+        }}
+        onSubmit={handleSaveVehicle}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Stats row */}
@@ -409,30 +432,6 @@ export default function FleetPage() {
         </div>
       </div>
 
-      <VehicleForm
-        open={isDrawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        editingVehicleId={editingVehicleId}
-        saving={saving}
-        form={form}
-        setForm={setForm}
-        step={step}
-        setStep={setStep}
-        totalSteps={totalSteps}
-        makes={makes}
-        models={models}
-        plateTypes={plateTypes}
-        branches={branches}
-        insuranceCompanies={insuranceCompanies}
-        insuranceTypes={insuranceTypes}
-        vehicleImages={vehicleImages}
-        vehicleImagePreviews={vehicleImagePreviews}
-        existingImageFileIds={existingImageFileIds}
-        onImageChange={handleImageChange}
-        onRemoveImage={removeImage}
-        onRemoveExistingImage={removeExistingImage}
-        onSubmit={handleSaveVehicle}
-      />
     </div>
   );
 }

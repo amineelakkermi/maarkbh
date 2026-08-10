@@ -13,6 +13,18 @@ const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
 const extractBranchIds = (details: any): number[] =>
   (details?.branches || details?.branchIds || []).map((b: any) => (typeof b === 'object' ? b.id : b));
 
+// The backend expects Saudi mobile numbers in the form 9665XXXXXXXX.
+// Normalize common input formats (+9665..., 009665..., 05..., 5...) to that shape.
+const normalizeSaudiPhone = (raw: string): string => {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00966")) digits = digits.slice(2);
+  else if (digits.startsWith("0")) digits = `966${digits.slice(1)}`;
+  else if (digits.startsWith("5")) digits = `966${digits}`;
+  return digits;
+};
+
+const isValidSaudiPhone = (phone: string): boolean => /^9665\d{8}$/.test(phone);
+
 const ROLE_BADGE: Record<string, BadgeVariant> = {
   "Owner": "violet",
   "Manager": "info",
@@ -50,8 +62,10 @@ export default function StaffPage() {
   const [viewLoading, setViewLoading] = useState(false);
   const { showToast } = useToast();
 
+  const [userName, setUserName] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [password, setPassword] = useState("");
   const [roleName, setRoleName] = useState("");
   const [branchIds, setBranchIds] = useState<number[]>([]);
@@ -119,8 +133,10 @@ export default function StaffPage() {
   };
 
   const resetForm = () => {
+    setUserName("");
     setFullName("");
     setEmail("");
+    setPhoneNumber("");
     setPassword("");
     setRoleName("");
     setBranchIds([]);
@@ -135,8 +151,10 @@ export default function StaffPage() {
 
   const handleEditUser = async (user: any) => {
     setEditingUser(user);
+    setUserName(user.userName || "");
     setFullName(user.name || "");
     setEmail(user.email || "");
+    setPhoneNumber(user.phoneNumber || "");
     setPassword("");
     setRoleName(user.roleName || "");
     setBranchIds(user.branchIds || []);
@@ -147,9 +165,11 @@ export default function StaffPage() {
     // fetch full details so the branch checkboxes/isActive/role are accurate.
     try {
       const details = await tenantUserService.getById(user.id);
+      setUserName(details.userName || user.userName || "");
       setFullName(details.fullName || user.name || "");
       setRoleName(details.roleName || user.roleName || "");
       setEmail(details.email || user.email || "");
+      setPhoneNumber(details.phoneNumber || user.phoneNumber || "");
       setBranchIds(extractBranchIds(details));
       setIsActive(details.isActive !== false);
       setEditingUser((prev: any) => ({ ...prev, ...details }));
@@ -174,19 +194,26 @@ export default function StaffPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !email || !password || !roleName) {
+    if (!userName || !fullName || !email || !password || !roleName) {
       showToast(T("Please fill all mandatory fields", "الرجاء تعبئة الحقول الإلزامية", ar));
+      return;
+    }
+
+    const normalizedPhone = phoneNumber ? normalizeSaudiPhone(phoneNumber) : "";
+    if (normalizedPhone && !isValidSaudiPhone(normalizedPhone)) {
+      showToast(T("Phone number must be a Saudi mobile number in the form 9665XXXXXXXX", "يجب أن يكون رقم الهاتف رقم جوال سعودي بصيغة 9665XXXXXXXX", ar));
       return;
     }
 
     try {
       await tenantUserService.create({
+        userName,
         fullName,
         email,
+        phoneNumber: normalizedPhone || undefined,
         password,
         roleName,
         branchIds,
-        isActive,
       });
 
       await loadUsers();
@@ -201,17 +228,26 @@ export default function StaffPage() {
 
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !roleName) {
+    if (!userName || !fullName || !email || !roleName) {
       showToast(T("Please fill all mandatory fields", "الرجاء تعبئة الحقول الإلزامية", ar));
+      return;
+    }
+
+    const normalizedPhone = phoneNumber ? normalizeSaudiPhone(phoneNumber) : "";
+    if (normalizedPhone && !isValidSaudiPhone(normalizedPhone)) {
+      showToast(T("Phone number must be a Saudi mobile number in the form 9665XXXXXXXX", "يجب أن يكون رقم الهاتف رقم جوال سعودي بصيغة 9665XXXXXXXX", ar));
       return;
     }
 
     try {
       await tenantUserService.update(editingUser.id, {
+        userName,
+        email,
+        phoneNumber: normalizedPhone || undefined,
         fullName,
+        isActive,
         roleName,
         branchIds,
-        isActive,
       });
 
       await loadUsers();
@@ -406,10 +442,24 @@ export default function StaffPage() {
                   </div>
                 </div>
 
+                {viewingUser.userName && (
+                  <div className="p-3 rounded-md bg-mk-ink-50">
+                    <div className="mk-caption text-mk-ink-500 mb-1">{T("Username", "اسم المستخدم", ar)}</div>
+                    <div className="mk-label text-mk-ink-900">{viewingUser.userName}</div>
+                  </div>
+                )}
+
                 {viewingUser.email && (
                   <div className="p-3 rounded-md bg-mk-ink-50">
                     <div className="mk-caption text-mk-ink-500 mb-1">{T("Email", "الإيميل", ar)}</div>
                     <div className="mk-label text-mk-ink-900">{viewingUser.email}</div>
+                  </div>
+                )}
+
+                {viewingUser.phoneNumber && (
+                  <div className="p-3 rounded-md bg-mk-ink-50">
+                    <div className="mk-caption text-mk-ink-500 mb-1">{T("Phone Number", "رقم الهاتف", ar)}</div>
+                    <div className="mk-label text-mk-ink-900">{viewingUser.phoneNumber}</div>
                   </div>
                 )}
               </div>
@@ -440,22 +490,35 @@ export default function StaffPage() {
 
             <form onSubmit={handleCreateUser} className="flex flex-col gap-4 mt-5">
               <Input
+                label={T("Username *", "اسم المستخدم *", ar)}
+                placeholder={T("Enter username", "أدخل اسم المستخدم", ar)}
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+              />
+              <Input
                 label={T("Full Name *", "الاسم الكامل *", ar)}
-                placeholder={T("e.g. Sara Al-Otaibi", "مثال: سارة العتيبي", ar)}
+                placeholder={T("Enter full name", "أدخل الاسم الكامل", ar)}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
               <Input
                 label={T("Email *", "البريد الإلكتروني *", ar)}
                 type="email"
-                placeholder="e.g. sara@demo.maarkbh.com"
+                placeholder={T("Enter email", "أدخل البريد الالكتروني", ar)}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
               <Input
+                label={T("Phone Number", "رقم الهاتف", ar)}
+                type="tel"
+                placeholder="e.g. 9665XXXXXXXX"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+              <Input
                 label={T("Password *", "كلمة المرور *", ar)}
                 type="password"
-                placeholder="e.g. Sara@1234"
+                placeholder={T("Enter password", "أدخل كلمة المرور", ar)}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -491,19 +554,6 @@ export default function StaffPage() {
                   ))}
                 </div>
               </div>
-
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-mk-ink-50">
-                <input
-                  type="checkbox"
-                  id="isActiveCreate"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="isActiveCreate" className="mk-body text-mk-ink-900">
-                  {T("Active", "نشط", ar)}
-                </label>
-              </div>
             </form>
           </div>
 
@@ -526,10 +576,30 @@ export default function StaffPage() {
 
             <form onSubmit={handleUpdateUser} className="flex flex-col gap-4 mt-5">
               <Input
+                label={T("Username *", "اسم المستخدم *", ar)}
+                placeholder={T("Enter username", "أدخل اسم المستخدم", ar)}
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+              />
+              <Input
                 label={T("Full Name *", "الاسم الكامل *", ar)}
                 placeholder={T("Enter full name", "ادخل الاسم الكامل", ar)}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
+              />
+              <Input
+                label={T("Email *", "البريد الإلكتروني *", ar)}
+                type="email"
+                placeholder={T("Enter email", "أدخل البريد الالكتروني", ar)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <Input
+                label={T("Phone Number", "رقم الهاتف", ar)}
+                type="tel"
+                placeholder="e.g. 9665XXXXXXXX"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
               />
               <Select
                 label={T("Role *", "الدور *", ar)}

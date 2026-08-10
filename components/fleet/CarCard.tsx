@@ -59,7 +59,10 @@ export function CarCard({ car, onEdit, onDelete }: CarCardProps) {
       : undefined;
 
   return (
-    <div className="rounded-md border border-mk-ink-100 flex flex-col overflow-hidden transition-shadow hover:shadow-md bg-white">
+    <div
+      className="rounded-md border border-mk-ink-100 flex flex-col overflow-hidden transition-shadow hover:shadow-md bg-white cursor-pointer"
+      onClick={() => onEdit(car)}
+    >
       {/* Card header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-mk-ink-100">
         <div className="flex items-center gap-2">
@@ -201,7 +204,7 @@ export function CarCard({ car, onEdit, onDelete }: CarCardProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 px-4 py-3 border-t border-mk-ink-100">
+      <div className="flex gap-2 px-4 py-3 border-t border-mk-ink-100" onClick={(e) => e.stopPropagation()}>
         {car.status === "available" ? (
           <Button variant="primary" size="sm" className="flex-1 justify-center">
             {T("Quick book", "حجز سريع", ar)}
@@ -215,7 +218,7 @@ export function CarCard({ car, onEdit, onDelete }: CarCardProps) {
             {T("Update status", "تحديث الحالة", ar)}
           </Button>
         ) : (
-          <Button variant="secondary" size="sm" className="flex-1 justify-center">
+          <Button variant="secondary" size="sm" className="flex-1 justify-center" onClick={() => onEdit(car)}>
             {T("View details", "عرض التفاصيل", ar)}
           </Button>
         )}

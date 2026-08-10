@@ -4,6 +4,7 @@
 
 import { CarStatus } from "@/lib/data";
 import * as Types from "@/lib/api-types";
+import type { SketchItem, DamageType } from "@/lib/tajeer";
 
 export const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
 
@@ -93,12 +94,17 @@ export function emptyVehicleForm() {
     registrationExpiryDate: "",
     inspectionExpiryDate: "",
     serialNumber: "",
+    operationCardNumber: "",
+    operationCardExpiryDate: "",
+    customsNumber: "",
+    otherNotes: "",
     makeId: "",
     modelId: "",
     year: "",
     color: "",
     vin: "",
     engineNumber: "",
+    payloadKg: "",
     bodyType: "",
     category: "",
     seats: "",
@@ -139,7 +145,46 @@ export function emptyVehicleForm() {
     firstAidKitStatus: Types.PresenceStatus.Available,
     safetyTriangleStatus: Types.PresenceStatus.Available,
     tireToolsStatus: Types.PresenceStatus.Available,
+    sketchItems: [] as SketchItem[],
   };
+}
+
+export const DAMAGE_TYPE_TO_ENUM: Record<DamageType, number> = {
+  "small-scratch": Types.VehicleDamageType.SmallScratch,
+  "deep-scratch": Types.VehicleDamageType.DeepScratch,
+  "very-deep-scratch": Types.VehicleDamageType.VeryDeepScratch,
+  "bend-in-body": Types.VehicleDamageType.BendInBody,
+};
+
+export const ENUM_TO_DAMAGE_TYPE: Record<number, DamageType> = {
+  [Types.VehicleDamageType.SmallScratch]: "small-scratch",
+  [Types.VehicleDamageType.DeepScratch]: "deep-scratch",
+  [Types.VehicleDamageType.VeryDeepScratch]: "very-deep-scratch",
+  [Types.VehicleDamageType.BendInBody]: "bend-in-body",
+};
+
+// SketchComponent's canvas coordinate space (see CAR_W/CAR_H in
+// components/employee/SketchComponent.tsx) — the backend expects positions
+// as a 0–100 percentage instead, so we rescale in both directions.
+const SKETCH_CANVAS_W = 2196;
+const SKETCH_CANVAS_H = 1003;
+
+export function mapSketchItemsToDamagePoints(items: SketchItem[]) {
+  return (items || []).map((item) => ({
+    damageType: DAMAGE_TYPE_TO_ENUM[item.type] || Types.VehicleDamageType.SmallScratch,
+    positionX: Math.round((item.x / SKETCH_CANVAS_W) * 1000) / 10,
+    positionY: Math.round((item.y / SKETCH_CANVAS_H) * 1000) / 10,
+    note: item.note || undefined,
+  }));
+}
+
+export function mapDamagePointsToSketchItems(points: any[]): SketchItem[] {
+  return (Array.isArray(points) ? points : []).map((p) => ({
+    type: ENUM_TO_DAMAGE_TYPE[p.damageType] || "small-scratch",
+    x: ((p.positionX ?? 0) / 100) * SKETCH_CANVAS_W,
+    y: ((p.positionY ?? 0) / 100) * SKETCH_CANVAS_H,
+    note: p.note || undefined,
+  }));
 }
 
 const firstDefined = (...values: any[]) => {
@@ -180,6 +225,12 @@ export function mapVehicleToForm(raw: any) {
       firstDefined(plate.inspectionExpiryDate, v.inspectionExpiryDate, v.periodicInspectionExpiry)
     ),
     serialNumber: firstDefined(plate.serialNumber, v.serialNumber) ?? "",
+    operationCardNumber: firstDefined(plate.operationCardNumber, v.operationCardNumber) ?? "",
+    operationCardExpiryDate: toDateInput(
+      firstDefined(plate.operationCardExpiryDate, v.operationCardExpiryDate)
+    ),
+    customsNumber: firstDefined(plate.customsNumber, v.customsNumber) ?? "",
+    otherNotes: firstDefined(plate.otherNotes, v.otherNotes) ?? "",
 
     makeId: firstDefined(info.makeId, v.makeId) ?? "",
     modelId: firstDefined(info.modelId, v.modelId) ?? "",
@@ -187,6 +238,7 @@ export function mapVehicleToForm(raw: any) {
     color: firstDefined(info.color, v.color) ?? "",
     vin: firstDefined(info.vin, v.vin, v.chassisNumber) ?? "",
     engineNumber: firstDefined(info.engineNumber, v.engineNumber) ?? "",
+    payloadKg: firstDefined(info.payloadKg, v.payloadKg) ?? "",
     bodyType: firstDefined(info.bodyType, v.bodyType) ?? "",
     category: firstDefined(info.category, v.category) ?? "",
     seats: firstDefined(info.seats, v.seats) ?? "",
@@ -240,6 +292,7 @@ export function mapVehicleToForm(raw: any) {
     safetyTriangleStatus:
       firstDefined(tajeer.safetyTriangleStatus, v.safetyTriangleStatus) ?? empty.safetyTriangleStatus,
     tireToolsStatus: firstDefined(tajeer.tireToolsStatus, v.tireToolsStatus) ?? empty.tireToolsStatus,
+    sketchItems: mapDamagePointsToSketchItems(v.damagePoints),
   };
 }
 
@@ -262,6 +315,10 @@ export const buildVehiclePayload = (form: any, imageFileIds: number[] = []) => (
     registrationExpiryDate: form.registrationExpiryDate || undefined,
     inspectionExpiryDate: form.inspectionExpiryDate || undefined,
     serialNumber: form.serialNumber || undefined,
+    operationCardNumber: form.operationCardNumber || undefined,
+    operationCardExpiryDate: form.operationCardExpiryDate || undefined,
+    customsNumber: form.customsNumber || undefined,
+    otherNotes: form.otherNotes || undefined,
   },
   info: {
     makeId: Number(form.makeId),
@@ -270,6 +327,7 @@ export const buildVehiclePayload = (form: any, imageFileIds: number[] = []) => (
     color: form.color || "White",
     vin: form.vin || "UNKNOWN",
     engineNumber: form.engineNumber || undefined,
+    payloadKg: form.payloadKg ? Number(form.payloadKg) : undefined,
     bodyType: form.bodyType ? Number(form.bodyType) : 1,
     category: form.category ? Number(form.category) : 1,
     seats: form.seats ? Number(form.seats) : undefined,
@@ -366,7 +424,7 @@ export const buildVehiclePayload = (form: any, imageFileIds: number[] = []) => (
         sortOrder: i + 1,
       }))
     : ([] as any[]),
-  damagePoints: [] as any[],
+  damagePoints: mapSketchItemsToDamagePoints(form.sketchItems || []),
 });
 
 export const validateStep = (
@@ -400,6 +458,10 @@ export const validateStep = (
     }
   }
   if (currentStep === 3) {
+    if (!form.branchId) {
+      showToast(T("Please select branch", "الرجاء اختيار الفرع", ar));
+      return false;
+    }
     if (!form.dailyRate) {
       showToast(T("Please fill daily rate", "الرجاء تعبئة السعر اليومي", ar));
       return false;
@@ -435,6 +497,63 @@ export const STATUS_TABS: { key: "all" | CarStatus; labelEn: string; labelAr: st
   { key: "maintenance", labelEn: "Maintenance", labelAr: "صيانة" },
   { key: "reserved", labelEn: "Reserved", labelAr: "محجوزة" },
 ];
+
+export type VehicleFieldPanel = "basic" | "insurance" | "status";
+
+export interface VehicleRequiredField {
+  key: string;
+  labelEn: string;
+  labelAr: string;
+  panel: VehicleFieldPanel;
+}
+
+export const VEHICLE_REQUIRED_FIELDS: VehicleRequiredField[] = [
+  { key: "makeId", labelEn: "Make", labelAr: "الصانع", panel: "basic" },
+  { key: "modelId", labelEn: "Model", labelAr: "الموديل", panel: "basic" },
+  { key: "year", labelEn: "Year", labelAr: "سنة الصنع", panel: "basic" },
+  { key: "bodyType", labelEn: "Body type", labelAr: "نوع الهيكل", panel: "basic" },
+  { key: "category", labelEn: "Category", labelAr: "الفئة", panel: "basic" },
+  { key: "fuelType", labelEn: "Fuel type", labelAr: "نوع الوقود", panel: "basic" },
+  { key: "transmissionType", labelEn: "Transmission", labelAr: "ناقل الحركة", panel: "basic" },
+  { key: "plateTypeId", labelEn: "Plate type", labelAr: "نوع اللوحة", panel: "basic" },
+  { key: "plateNumber", labelEn: "Plate number", labelAr: "رقم اللوحة", panel: "basic" },
+  { key: "plateFirstLetter", labelEn: "Plate 1st letter", labelAr: "الحرف الأول للوحة", panel: "basic" },
+  { key: "plateSecondLetter", labelEn: "Plate 2nd letter", labelAr: "الحرف الثاني للوحة", panel: "basic" },
+  { key: "plateThirdLetter", labelEn: "Plate 3rd letter", labelAr: "الحرف الثالث للوحة", panel: "basic" },
+  { key: "branchId", labelEn: "Branch", labelAr: "الفرع", panel: "insurance" },
+  { key: "dailyRate", labelEn: "Daily rate", labelAr: "السعر اليومي", panel: "insurance" },
+  { key: "odometerReading", labelEn: "Odometer reading", labelAr: "قراءة العداد", panel: "status" },
+  { key: "lastOilChangeDate", labelEn: "Last oil change date", labelAr: "تاريخ آخر تغيير زيت", panel: "status" },
+];
+
+export const VEHICLE_FIELD_PANEL_MAP: Record<string, VehicleFieldPanel> = {
+  makeId: "basic", modelId: "basic", year: "basic", color: "basic", vin: "basic", engineNumber: "basic",
+  bodyType: "basic", category: "basic", seats: "basic", cylinders: "basic", fuelType: "basic", transmissionType: "basic",
+  plateTypeId: "basic", plateNumber: "basic", plateFirstLetter: "basic", plateSecondLetter: "basic", plateThirdLetter: "basic",
+  registrationNumber: "basic", registrationExpiryDate: "basic", inspectionExpiryDate: "basic", serialNumber: "basic",
+  branchId: "insurance", insuranceCompanyId: "insurance", insuranceTypeId: "insurance", insurancePolicyNumber: "insurance",
+  insuranceExpiryDate: "insurance", insuranceAmount: "insurance", dailyRate: "insurance", extraKilometerRate: "insurance",
+  fullFuelRate: "insurance", lateHourRate: "insurance", isKilometerLimitEnabled: "insurance", dailyKilometerLimit: "insurance",
+  status: "status", isListingActive: "status", odometerReading: "status", fuelLevel: "status", enduranceAmount: "status",
+  oilType: "status", lastOilChangeDate: "status", oilChangeDistance: "status", airConditionGrade: "status",
+  radioStatus: "status", screenStatus: "status", odometerStatus: "status", seatCleanliness: "status", keyStatus: "status",
+  tireCondition: "status", spareTireStatus: "status", fireExtinguisherStatus: "status", firstAidKitStatus: "status",
+  safetyTriangleStatus: "status", tireToolsStatus: "status", tajeerNotes: "status",
+};
+
+export function getMissingVehicleFields(form: any): VehicleRequiredField[] {
+  return VEHICLE_REQUIRED_FIELDS.filter((f) => {
+    const v = form?.[f.key];
+    return v === undefined || v === null || v === "";
+  });
+}
+
+export function calcVehicleCompletion(form: any, photoCount: number) {
+  const missing = getMissingVehicleFields(form);
+  const total = VEHICLE_REQUIRED_FIELDS.length + 1; // +1 for photos
+  const done = VEHICLE_REQUIRED_FIELDS.length - missing.length + (photoCount >= 4 ? 1 : 0);
+  return { pct: Math.round((done / total) * 100), missing };
+}
 
 export const STATS = [
   { labelEn: "Available", labelAr: "متاحة", key: "available", cls: "text-mk-mint-600" },

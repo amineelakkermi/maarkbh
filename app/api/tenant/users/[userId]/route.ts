@@ -62,8 +62,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
+      console.error('Backend rejected update user:', errorData);
       return NextResponse.json(
-        { error: errorData?.message || 'Failed to update user' },
+        errorData || { error: 'Failed to update user' },
         { status: response.status }
       );
     }

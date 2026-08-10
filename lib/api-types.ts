@@ -369,16 +369,19 @@ export interface VehicleSearchRequest {
 // ─── Admin Tenant ───────────────────────────────────────────────
 
 export interface CreateTenantUserRequest {
+  userName?: string;
   email?: string;
+  phoneNumber?: string;
   password?: string;
   fullName?: string;
-  phoneNumber?: string;
   roleName?: string;
   branchIds?: number[];
-  isActive?: boolean;
 }
 
 export interface UpdateTenantUserRequest {
+  userName?: string;
+  email?: string;
+  phoneNumber?: string;
   fullName?: string;
   isActive?: boolean;
   roleName?: string;
