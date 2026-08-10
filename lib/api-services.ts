@@ -942,16 +942,6 @@ export const tenantRoleService = {
   },
 
   /**
-   * Get roles lookup
-   * GET /api/tenant/roles/lookup
-   */
-  async lookup(): Promise<any> {
-    return apiClient.request('/tenant/roles/lookup', {
-      method: 'GET',
-    });
-  },
-
-  /**
    * Get permissions
    * GET /api/tenant/roles/get-permissions
    */
