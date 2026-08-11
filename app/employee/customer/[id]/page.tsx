@@ -1,8 +1,5 @@
 "use client";
 
- 
-
-
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -20,7 +17,7 @@ import { OtpVerificationPanel } from "@/components/employee/OtpVerification";
 
 type EditableFields = Pick<ClientProfile,
   "name" | "nameAr" | "phone" | "email" | "idType" | "idNumber" | "idExpiryDate" |
-  "birthDate" | "nationality" | "licenseNumber" | "licenseExpiryDate" |
+  "birthDate" | "hijriBirthDate" | "nationality" | "licenseNumber" | "licenseExpiryDate" |
   "personAddress" | "idCopyNumber" | "licenseIssuePlace" | "borderNumber"
 >;
 
@@ -47,9 +44,11 @@ const DEBT_BADGE: Record<"unpaid" | "overdue" | "paid", { variant: "success" | "
   paid: { variant: "success", label: ["Paid", "مسدد"] },
 };
 
-function firstString(...values: (string | undefined | null)[]): string {
+function firstString(...values: (string | number | undefined | null)[]): string {
   for (const v of values) {
-    if (typeof v === "string" && v.trim() !== "") return v;
+    if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) continue;
+    const s = typeof v === "number" ? String(v) : v;
+    if (s.trim() !== "") return s;
   }
   return "";
 }
@@ -66,14 +65,30 @@ function mapApiToClientProfile(item: any): ClientProfile {
     name: item.fullNameEn || item.name || "",
     nameAr: item.fullNameAr || item.nameAr || "",
     phone: item.phoneNumber || "",
-    email: item.email,
+    email: firstString(
+      item.email,
+      item.national?.email,
+      item.residence?.email,
+      item.visitor?.email,
+      item.gulf?.email
+    ) || undefined,
     idType,
     idNumber: firstString(
       item.idNumber,
       item.identityNumber,
+      item.beneficiaryIdNumber,
+      item.national?.idNumber,
+      item.national?.identityNumber,
       item.national?.beneficiaryIdNumber,
+      item.national?.nationalId,
+      item.residence?.idNumber,
+      item.residence?.identityNumber,
       item.residence?.beneficiaryIdNumber,
+      item.residence?.iqamaNumber,
       item.visitor?.passportNumber,
+      item.visitor?.idNumber,
+      item.gulf?.idNumber,
+      item.gulf?.identityNumber,
       item.gulf?.beneficiaryIdNumber
     ),
     idExpiryDate: firstString(
@@ -86,12 +101,33 @@ function mapApiToClientProfile(item: any): ClientProfile {
     ) || undefined,
     birthDate: firstString(
       item.birthDate,
+      item.dateOfBirth,
       item.national?.birthDate,
+      item.national?.dateOfBirth,
       item.residence?.birthDate,
+      item.residence?.dateOfBirth,
       item.visitor?.birthDate,
-      item.gulf?.birthDate
+      item.visitor?.dateOfBirth,
+      item.gulf?.birthDate,
+      item.gulf?.dateOfBirth
     ) || undefined,
-    hijriBirthDate: item.national?.hijriBirthDate ?? item.residence?.hijriBirthDate,
+    hijriBirthDate: firstString(
+      item.hijriBirthDate,
+      item.hijriDateOfBirth,
+      item.national?.hijriBirthDate,
+      item.national?.hijriDateOfBirth,
+      item.residence?.hijriBirthDate,
+      item.residence?.hijriDateOfBirth
+    )
+      ? Number(firstString(
+          item.hijriBirthDate,
+          item.hijriDateOfBirth,
+          item.national?.hijriBirthDate,
+          item.national?.hijriDateOfBirth,
+          item.residence?.hijriBirthDate,
+          item.residence?.hijriDateOfBirth
+        ))
+      : undefined,
     nationality: firstString(
       item.nationality,
       item.national?.nationality,
@@ -182,8 +218,12 @@ export default function CustomerDetailPage() {
         setLoading(true);
         setError(null);
         const response = await customerService.getById(Number(id));
-        const data = response?.data ?? response;
-        const mapped = mapApiToClientProfile(data);
+        const data = response?.data ?? response?.result ?? response;
+        const customerData = data?.data && typeof data.data === "object" && (data.data.id !== undefined || data.data.fullNameEn !== undefined) ? data.data : data;
+        console.log("[CustomerDetail] API response:", response);
+        console.log("[CustomerDetail] extracted customerData:", customerData);
+        const mapped = mapApiToClientProfile(customerData);
+        console.log("[CustomerDetail] mapped client:", mapped);
         setClient(mapped);
         setPhoneVerified(mapped.kycStatus === "verified");
         setEmailVerified(mapped.kycStatus === "verified");
@@ -235,7 +275,8 @@ export default function CustomerDetailPage() {
       idType: client.idType,
       idNumber: client.idNumber,
       idExpiryDate: client.idExpiryDate ?? "",
-      birthDate: client.birthDate ?? (client.hijriBirthDate ? String(client.hijriBirthDate) : ""),
+      birthDate: client.birthDate ?? "",
+      hijriBirthDate: client.hijriBirthDate,
       nationality: client.nationality ?? "",
       licenseNumber: client.licenseNumber,
       licenseExpiryDate: client.licenseExpiryDate ?? "",
@@ -273,7 +314,7 @@ export default function CustomerDetailPage() {
         updatePayload.national = {
           beneficiaryIdNumber: draft.idNumber,
           birthDate: draft.birthDate || undefined,
-          hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
+          hijriBirthDate: draft.hijriBirthDate || undefined,
           email: draft.email || undefined,
           isHijriBirthDate: !draft.birthDate,
         };
@@ -347,19 +388,43 @@ export default function CustomerDetailPage() {
     const idCopyNumberField: IdentityFieldDef = { key: "idCopyNumber", labelEn: "ID Copy No.", labelAr: "رقم نسخة الهوية", required: true, type: "text", value: d.idCopyNumber ?? "", onChange: (v) => updateDraft("idCopyNumber", v) };
 
     if (d.idType === "Saudi ID" || d.idType === "Iqama") {
-      return [
+      const fields: IdentityFieldDef[] = [
         { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
         addressField,
-        {
+      ];
+      if (d.idType === "Saudi ID") {
+        fields.push(
+          {
+            key: "hijriBirthDate",
+            labelEn: "Date of Birth (Hijri)",
+            labelAr: "تاريخ الميلاد (هجري)",
+            required: true,
+            type: "hijri",
+            value: d.hijriBirthDate ? String(d.hijriBirthDate) : "",
+            onChange: (v) => updateDraft("hijriBirthDate", v ? Number(v) : undefined as any),
+          },
+          {
+            key: "birthDate",
+            labelEn: "Date of Birth (Gregorian, optional)",
+            labelAr: "تاريخ الميلاد (ميلادي، اختياري)",
+            required: false,
+            type: "date",
+            value: d.birthDate ?? "",
+            onChange: (v) => updateDraft("birthDate", v),
+          }
+        );
+      } else {
+        fields.push({
           key: "birthDate",
-          labelEn: d.idType === "Saudi ID" ? "Date of Birth (Hijri)" : "Date of Birth",
-          labelAr: d.idType === "Saudi ID" ? "تاريخ الميلاد (هجري)" : "تاريخ الميلاد",
+          labelEn: "Date of Birth",
+          labelAr: "تاريخ الميلاد",
           required: true,
-          type: d.idType === "Saudi ID" ? "hijri" : "date",
+          type: "date",
           value: d.birthDate ?? "",
           onChange: (v) => updateDraft("birthDate", v),
-        },
-      ];
+        });
+      }
+      return fields;
     }
     if (d.idType === "GCC ID") {
       return [
