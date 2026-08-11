@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Car, CAR_STATUS_LABEL, CAR_IMAGES } from "@/lib/data";
+import { Car, CAR_STATUS_LABEL } from "@/lib/data";
 import { MapPin, Wrench, Edit, Trash2 } from "lucide-react";
 import { Badge, Button, RiyalSymbol } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
@@ -20,7 +20,7 @@ export function CarCard({ car, onEdit, onDelete }: CarCardProps) {
 
   const typeIcon = TYPE_ICON[car.type] ?? "🚗";
 
-  const images = car.imageUrls?.length ? car.imageUrls : CAR_IMAGES[car.model] || [];
+  const images = car.imageUrls?.length ? car.imageUrls : [];
   const [index, setIndex] = useState(0);
   const [startX, setStartX] = useState<number | null>(null);
   const [isDragging, setDragging] = useState(false);

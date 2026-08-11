@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import * as Types from "@/lib/api-types";
-import { Loader2 } from "lucide-react";
-import { Button, Input, Select, Drawer, DrawerHeader, DrawerFooter, useToast } from "@/components/ui";
+import { Loader2, Zap } from "lucide-react";
+import { Button, Input, Select, Toggle, Drawer, DrawerHeader, DrawerFooter, useToast } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
+import { vehicleService } from "@/lib/api-services";
 import { T, AR_LABELS, enumOptions, validateStep } from "@/lib/fleet";
 
 interface VehicleFormProps {
@@ -58,6 +60,44 @@ export function VehicleForm({
   const { dir } = useAdmin();
   const ar = dir === "rtl";
   const { showToast } = useToast();
+
+  const [featureTypes, setFeatureTypes] = useState<{ id: number; name?: string; nameAr?: string; nameEn?: string }[]>([]);
+  const [featureTypesLoading, setFeatureTypesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    async function loadFeatureTypes() {
+      try {
+        setFeatureTypesLoading(true);
+        const response = await vehicleService.searchFeatureTypes({ pageNumber: 1, pageSize: 200 });
+        const list =
+          response?.data?.items ??
+          response?.items ??
+          (Array.isArray(response?.data) ? response.data : undefined) ??
+          (Array.isArray(response) ? response : undefined) ??
+          [];
+        if (!cancelled) setFeatureTypes(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error("Error loading vehicle feature types:", err);
+        if (!cancelled) setFeatureTypes([]);
+      } finally {
+        if (!cancelled) setFeatureTypesLoading(false);
+      }
+    }
+    loadFeatureTypes();
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const handleFeatureToggle = (featureId: number, checked: boolean) => {
+    setForm((f: any) => {
+      const current = Array.isArray(f.featureTypeIds) ? f.featureTypeIds : [];
+      const next = checked
+        ? [...current, featureId]
+        : current.filter((id: any) => id !== featureId);
+      return { ...f, featureTypeIds: next };
+    });
+  };
 
   const handleNext = () => {
     if (validateStep(form, step, ar, showToast)) {
@@ -575,6 +615,37 @@ export function VehicleForm({
                       ))}
                     </div>
                   )}
+
+                  {/* Features & Amenities */}
+                  <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-mk-ink-100">
+                    <div className="flex items-center gap-2">
+                      <Zap size={16} className="text-mk-blue-500" />
+                      <div className="mk-body-sm text-mk-fg-1 font-medium">{T("Features & Amenities", "الإدراج والمميزات", ar)}</div>
+                    </div>
+                    {featureTypesLoading ? (
+                      <div className="flex items-center gap-2 text-mk-ink-500 mk-caption">
+                        <Loader2 size={14} className="animate-spin" />
+                        {T("Loading features...", "جاري تحميل المميزات...", ar)}
+                      </div>
+                    ) : featureTypes.length === 0 ? (
+                      <div className="text-mk-ink-500 mk-caption">{T("No features available", "لا توجد مميزات متاحة", ar)}</div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3">
+                        {featureTypes.map((feature) => {
+                          const label = ar ? feature.nameAr || feature.name : feature.nameEn || feature.name || String(feature.id);
+                          const checked = (form.featureTypeIds || []).includes(feature.id);
+                          return (
+                            <Toggle
+                              key={feature.id}
+                              label={label}
+                              checked={checked}
+                              onChange={(checked) => handleFeatureToggle(feature.id, checked)}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

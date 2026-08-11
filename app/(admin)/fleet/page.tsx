@@ -237,6 +237,7 @@ export default function FleetPage() {
         })
       );
 
+      console.log("Vehicles detail responses:", detailedVehicles);
       const transformedVehicles = detailedVehicles.map((item: any) => ({
         id: item.id,
         name: `${item.makeName || ""} ${item.modelName || ""} ${item.year || ""}`.trim(),
@@ -284,13 +285,14 @@ export default function FleetPage() {
         otherNotes: item.otherNotes,
         imageUrls: item.images?.length
           ? item.images
-              .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-              .map((img: any) => {
+              .filter((img: any) => {
                 const fileId = img.fileId ?? img.id ?? img.attachmentId;
-                if (!fileId) console.warn("Vehicle image without fileId:", img);
-                return `/api/attachments/${fileId}/download`;
+                const valid = typeof fileId === "number" && fileId > 0;
+                if (!valid) console.warn("Vehicle image without valid fileId:", img);
+                return valid;
               })
-              .filter(Boolean)
+              .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+              .map((img: any) => `/api/attachments/${img.fileId ?? img.id ?? img.attachmentId}/download`)
           : undefined,
       }));
       setVehicles(transformedVehicles);

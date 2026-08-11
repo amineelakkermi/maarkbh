@@ -77,6 +77,9 @@ function mapApiToClientProfile(item: any): ClientProfile {
       item.idNumber,
       item.identityNumber,
       item.beneficiaryIdNumber,
+      item.nationalId,
+      item.iqamaNumber,
+      item.passportNumber,
       item.national?.idNumber,
       item.national?.identityNumber,
       item.national?.beneficiaryIdNumber,
@@ -364,8 +367,6 @@ export default function CustomerDetailPage() {
       setClient((prev) => prev && {
         ...prev,
         ...draft,
-        hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
-        birthDate: isSaudi ? undefined : draft.birthDate,
       });
       setEditing(false);
       setDraft(null);

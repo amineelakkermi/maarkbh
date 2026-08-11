@@ -392,6 +392,17 @@ export const vehicleService = {
   },
 
   /**
+   * Search vehicle feature types
+   * POST /api/vehicle-feature-types/search
+   */
+  async searchFeatureTypes(request: any = {}): Promise<any> {
+    return apiClient.request('/vehicle-feature-types/search', {
+      method: 'POST',
+      body: request,
+    });
+  },
+
+  /**
    * Search vehicles picker
    * POST /api/vehicles/picker
    */

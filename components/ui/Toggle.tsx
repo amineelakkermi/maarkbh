@@ -41,6 +41,7 @@ function Toggle({ label, size = "md", defaultChecked = false, checked, onChange,
 
   return (
     <button
+      type="button"
       role="switch"
       aria-checked={isOn}
       aria-disabled={disabled}

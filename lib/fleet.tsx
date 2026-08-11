@@ -145,6 +145,7 @@ export function emptyVehicleForm() {
     firstAidKitStatus: Types.PresenceStatus.Available,
     safetyTriangleStatus: Types.PresenceStatus.Available,
     tireToolsStatus: Types.PresenceStatus.Available,
+    featureTypeIds: [] as number[],
     sketchItems: [] as SketchItem[],
   };
 }
@@ -292,6 +293,7 @@ export function mapVehicleToForm(raw: any) {
     safetyTriangleStatus:
       firstDefined(tajeer.safetyTriangleStatus, v.safetyTriangleStatus) ?? empty.safetyTriangleStatus,
     tireToolsStatus: firstDefined(tajeer.tireToolsStatus, v.tireToolsStatus) ?? empty.tireToolsStatus,
+    featureTypeIds: Array.isArray(v.featureTypeIds) ? v.featureTypeIds : [],
     sketchItems: mapDamagePointsToSketchItems(v.damagePoints),
   };
 }
@@ -415,7 +417,7 @@ export const buildVehiclePayload = (form: any, imageFileIds: number[] = []) => (
         ? Types.PresenceStatus.Available
         : Number(form.tireToolsStatus),
   },
-  featureTypeIds: [] as number[],
+  featureTypeIds: (form.featureTypeIds || []).map((id: any) => Number(id)),
   images: imageFileIds.length
     ? imageFileIds.map((fileId: number, i: number) => ({
         slotCode: i === 0 ? "front" : `view-${i + 1}`,

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowLeft, ArrowRight, Car, ShieldCheck, ClockAlert, ChevronDown,
-  Camera, X, Loader2, AlertCircle, CheckCircle2, Info,
+  Camera, X, Loader2, AlertCircle, CheckCircle2, Info, Zap,
 } from "lucide-react";
 import * as Types from "@/lib/api-types";
 import { Button, Input, Select, Toggle, Tabs } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
+import { vehicleService } from "@/lib/api-services";
 import { SketchComponent } from "@/components/employee/SketchComponent";
 import type { SketchItem } from "@/lib/tajeer";
 import {
@@ -173,6 +174,43 @@ export function VehicleDetailsPage({
 
   const [photoView, setPhotoView] = useState<"photos" | "diagram">("photos");
   const sketchItems: SketchItem[] = form.sketchItems || [];
+
+  const [featureTypes, setFeatureTypes] = useState<{ id: number; name?: string; nameAr?: string; nameEn?: string }[]>([]);
+  const [featureTypesLoading, setFeatureTypesLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFeatureTypes() {
+      try {
+        setFeatureTypesLoading(true);
+        const response = await vehicleService.searchFeatureTypes({ pageNumber: 1, pageSize: 200 });
+        const list =
+          response?.data?.items ??
+          response?.items ??
+          (Array.isArray(response?.data) ? response.data : undefined) ??
+          (Array.isArray(response) ? response : undefined) ??
+          [];
+        if (!cancelled) setFeatureTypes(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error("Error loading vehicle feature types:", err);
+        if (!cancelled) setFeatureTypes([]);
+      } finally {
+        if (!cancelled) setFeatureTypesLoading(false);
+      }
+    }
+    loadFeatureTypes();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleFeatureToggle = (featureId: number, checked: boolean) => {
+    setForm((f: any) => {
+      const current = Array.isArray(f.featureTypeIds) ? f.featureTypeIds : [];
+      const next = checked
+        ? [...current, featureId]
+        : current.filter((id: any) => id !== featureId);
+      return { ...f, featureTypeIds: next };
+    });
+  };
 
   const photoCount = existingImageFileIds.length + vehicleImages.length;
   const { pct, missing } = calcVehicleCompletion(form, photoCount);
@@ -822,6 +860,40 @@ export function VehicleDetailsPage({
                   </p>
                 )}
               </div>
+              )}
+            </div>
+
+            {/* Features & Amenities */}
+            <div className="rounded-lg p-4 mk-surface mk-shadow-8 border border-mk-ink-100">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 bg-mk-blue-50">
+                  <Zap size={16} className="text-mk-blue-500" />
+                </div>
+                <div className="mk-h4 text-mk-ink-900 flex-1">{T("Features & Amenities", "الإدراج والمميزات", ar)}</div>
+              </div>
+              {featureTypesLoading ? (
+                <div className="flex items-center gap-2 text-mk-ink-500 mk-caption">
+                  <Loader2 size={14} className="animate-spin" />
+                  {T("Loading features...", "جاري تحميل المميزات...", ar)}
+                </div>
+              ) : featureTypes.length === 0 ? (
+                <div className="text-mk-ink-500 mk-caption">{T("No features available", "لا توجد مميزات متاحة", ar)}</div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {featureTypes.map((feature) => {
+                    const label = ar ? feature.nameAr || feature.name : feature.nameEn || feature.name || String(feature.id);
+                    const checked = (form.featureTypeIds || []).includes(feature.id);
+                    return (
+                      <div key={feature.id} className="flex items-center justify-between py-2 border-b border-mk-ink-100 last:border-0">
+                        <span className="mk-body-sm text-mk-ink-700">{label}</span>
+                        <Toggle
+                          checked={checked}
+                          onChange={(checked) => handleFeatureToggle(feature.id, checked)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
