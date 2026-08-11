@@ -86,6 +86,7 @@ export interface CreateCustomerCommand {
   fullNameEn?: string;
   fullNameAr?: string;
   phoneNumber?: string;
+  email?: string;
   identityType?: IdentityType;
   address?: string;
   national?: NationalIdentityInfo;

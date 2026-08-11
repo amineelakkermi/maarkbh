@@ -306,7 +306,7 @@ export const countryService = {
    * POST /api/countries/search
    */
   async search(request: Types.CountrySearchRequest): Promise<any> {
-    return apiClient.request('/api/countries/search', {
+    return apiClient.request('/countries/search', {
       method: 'POST',
       body: request,
     });

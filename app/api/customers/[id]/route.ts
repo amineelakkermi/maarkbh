@@ -60,8 +60,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         });
 
         if(!response.ok){
-            const errorData = await response.json().catch(() => null);
-            return NextResponse.json({ error: errorData?.error || 'Failed to update customer' }, { status: response.status });
+            const responseText = await response.text().catch(() => '');
+            let errorData = null;
+            try { errorData = responseText ? JSON.parse(responseText) : null; } catch {}
+            console.error('Backend update customer error:', response.status, responseText, errorData);
+            return NextResponse.json(
+              { error: errorData?.error || errorData?.message || 'Failed to update customer', details: errorData || responseText },
+              { status: response.status }
+            );
         }
 
         const contentType = response.headers.get('content-type');

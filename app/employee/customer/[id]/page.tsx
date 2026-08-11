@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+ 
+
+
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ChevronRight, ChevronLeft, ChevronDown, Phone, CreditCard, FileText,
   Calendar, Star, Ban, Mail, MapPin, Pencil, Check, X as XIcon, CheckCircle2, FileSignature,
+  Loader2, Trash2,
 } from "lucide-react";
-import { Avatar, Badge, HijriDatePicker, Button, Select } from "@/components/ui";
+import { Avatar, Badge, HijriDatePicker, Button, Select, Modal } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
+import { customerService } from "@/lib/api-services";
+import { formatPhone, normalizeKycStatus } from "@/lib/formatting";
 import { CLIENTS, type ClientProfile, type ClientContract } from "@/lib/data";
 import { OtpVerificationPanel } from "@/components/employee/OtpVerification";
 
@@ -41,26 +47,179 @@ const DEBT_BADGE: Record<"unpaid" | "overdue" | "paid", { variant: "success" | "
   paid: { variant: "success", label: ["Paid", "مسدد"] },
 };
 
+function firstString(...values: (string | undefined | null)[]): string {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim() !== "") return v;
+  }
+  return "";
+}
+
+function mapApiToClientProfile(item: any): ClientProfile {
+  // Keep this log until the backend response shape is fully confirmed.
+  console.log("[CustomerDetail] raw API item:", item);
+
+  const idTypeCode = item.identityType ?? item.idType;
+  const idType = idTypeCode === 1 ? "Saudi ID" : idTypeCode === 2 ? "Iqama" : idTypeCode === 3 ? "Passport" : idTypeCode === 4 ? "GCC ID" : "Unknown";
+
+  return {
+    id: String(item.id),
+    name: item.fullNameEn || item.name || "",
+    nameAr: item.fullNameAr || item.nameAr || "",
+    phone: item.phoneNumber || "",
+    email: item.email,
+    idType,
+    idNumber: firstString(
+      item.idNumber,
+      item.identityNumber,
+      item.national?.beneficiaryIdNumber,
+      item.residence?.beneficiaryIdNumber,
+      item.visitor?.passportNumber,
+      item.gulf?.beneficiaryIdNumber
+    ),
+    idExpiryDate: firstString(
+      item.idExpiryDate,
+      item.identityExpiryDate,
+      item.national?.identityExpiryDate,
+      item.residence?.identityExpiryDate,
+      item.visitor?.identityExpiryDate,
+      item.gulf?.identityExpiryDate
+    ) || undefined,
+    birthDate: firstString(
+      item.birthDate,
+      item.national?.birthDate,
+      item.residence?.birthDate,
+      item.visitor?.birthDate,
+      item.gulf?.birthDate
+    ) || undefined,
+    hijriBirthDate: item.national?.hijriBirthDate ?? item.residence?.hijriBirthDate,
+    nationality: firstString(
+      item.nationality,
+      item.national?.nationality,
+      item.residence?.nationality,
+      item.visitor?.nationality,
+      item.gulf?.nationality
+    ) || undefined,
+    personAddress: item.address,
+    idCopyNumber: firstString(
+      item.idCopyNumber,
+      item.identityCopyNumber,
+      item.national?.idCopyNumber,
+      item.residence?.idCopyNumber,
+      item.visitor?.identityCopyNumber,
+      item.gulf?.identityCopyNumber
+    ) || undefined,
+    licenseIssuePlace: firstString(
+      item.licenseIssuePlace,
+      item.national?.licenseIssuePlace,
+      item.residence?.licenseIssuePlace,
+      item.visitor?.licenseIssuePlace,
+      item.gulf?.licenseIssuePlace
+    ) || undefined,
+    borderNumber: item.visitor?.borderNumber || undefined,
+    licenseNumber: firstString(
+      item.licenseNumber,
+      item.national?.licenseNumber,
+      item.residence?.licenseNumber,
+      item.visitor?.licenseNumber,
+      item.gulf?.licenseNumber
+    ) || "",
+    licenseExpiryDate: firstString(
+      item.licenseExpiryDate,
+      item.national?.licenseExpiryDate,
+      item.residence?.licenseExpiryDate,
+      item.visitor?.licenseExpiryDate,
+      item.gulf?.licenseExpiryDate
+    ) || undefined,
+    contracts: item.contracts || 0,
+    rating: item.rating || 0,
+    kycStatus: normalizeKycStatus(item.verificationStatus),
+    yakeenStatus: item.yakeenStatus === 1 ? "verified" : item.yakeenStatus === 2 ? "pending" : "not_verified",
+    blacklisted: item.isBlacklisted || false,
+    joinDate: item.creationTime ? new Date(item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+    history: [],
+    debts: [],
+  };
+}
+
 export default function CustomerDetailPage() {
   const { dir } = useAdmin();
   const ar = dir === "rtl";
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
-  const initialClient = CLIENTS.find((c) => c.id === id) ?? null;
-  const [client, setClient] = useState<ClientProfile | null>(initialClient);
+  const [client, setClient] = useState<ClientProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedContract, setExpandedContract] = useState<string | null>(null);
-  const [phoneVerified, setPhoneVerified] = useState(initialClient?.kycStatus === "verified");
-  const [emailVerified, setEmailVerified] = useState(initialClient?.kycStatus === "verified");
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditableFields | null>(null);
   const [savedToast, setSavedToast] = useState(false);
+  const [showContracts, setShowContracts] = useState(true);
+  const [expandedDebts, setExpandedDebts] = useState<Record<number, boolean>>({});
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!client) return;
+    try {
+      setDeleting(true);
+      await customerService.delete(Number(client.id));
+      setShowDeleteModal(false);
+      router.push("/employee/customer");
+    } catch (err) {
+      console.error("Error deleting customer:", err);
+      alert(T("Failed to delete customer.", "فشل حذف العميل.", ar));
+      setDeleting(false);
+    }
+  }
+
+  useEffect(() => {
+    async function loadCustomer() {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await customerService.getById(Number(id));
+        const data = response?.data ?? response;
+        const mapped = mapApiToClientProfile(data);
+        setClient(mapped);
+        setPhoneVerified(mapped.kycStatus === "verified");
+        setEmailVerified(mapped.kycStatus === "verified");
+      } catch (err: any) {
+        console.error("Error loading customer:", err);
+        setError(T("Failed to load customer details.", "فشل تحميل بيانات العميل.", ar));
+        // Fallback to mock data if API fails during development
+        const mocked = CLIENTS.find((c) => c.id === id) ?? null;
+        if (mocked) {
+          setClient(mocked);
+          setPhoneVerified(mocked.kycStatus === "verified");
+          setEmailVerified(mocked.kycStatus === "verified");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCustomer();
+  }, [id, ar]);
+
+  if (loading) {
+    return (
+      <div className="py-24 text-center flex flex-col items-center gap-3 text-mk-ink-400">
+        <Loader2 size={32} className="animate-spin" />
+        <span className="mk-label">{T("Loading customer...", "جاري تحميل بيانات العميل...", ar)}</span>
+      </div>
+    );
+  }
 
   if (!client) {
     return (
       <div className="py-24 text-center">
         <div className="mk-display mb-3">🪪</div>
         <div className="mk-body mb-2 text-mk-ink-900">{T("Customer not found", "العميل غير موجود", ar)}</div>
+        {error && <div className="mk-caption text-mk-danger mb-3">{error}</div>}
         <Link href="/employee/customer" className="mk-body-sm text-mk-blue-500 no-underline">{T("← Back", "→ العودة", ar)}</Link>
       </div>
     );
@@ -93,19 +252,88 @@ export default function CustomerDetailPage() {
     setDraft(null);
   }
 
-  function saveEditing() {
-    if (!draft) return;
-    const isSaudi = draft.idType === "Saudi ID";
-    setClient((prev) => prev && {
-      ...prev,
-      ...draft,
-      hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
-      birthDate: isSaudi ? undefined : draft.birthDate,
-    });
-    setEditing(false);
-    setDraft(null);
-    setSavedToast(true);
-    setTimeout(() => setSavedToast(false), 2200);
+  async function saveEditing() {
+    if (!draft || !client) return;
+    try {
+      const isSaudi = draft.idType === "Saudi ID";
+      const isIqama = draft.idType === "Iqama";
+      const isPassport = draft.idType === "Passport";
+      const isGulf = draft.idType === "GCC ID";
+
+      const updatePayload: any = {
+        fullNameEn: draft.name || undefined,
+        fullNameAr: draft.nameAr || undefined,
+        phoneNumber: draft.phone || undefined,
+        identityType: isSaudi ? 1 : isIqama ? 2 : isPassport ? 3 : isGulf ? 4 : undefined,
+        address: draft.personAddress || undefined,
+        isActive: true,
+      };
+
+      if (isSaudi) {
+        updatePayload.national = {
+          beneficiaryIdNumber: draft.idNumber,
+          birthDate: draft.birthDate || undefined,
+          hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
+          email: draft.email || undefined,
+          isHijriBirthDate: !draft.birthDate,
+        };
+      } else if (isIqama) {
+        updatePayload.residence = {
+          beneficiaryIdNumber: draft.idNumber,
+          birthDate: draft.birthDate || undefined,
+          email: draft.email || undefined,
+          isHijriBirthDate: false,
+        };
+      } else if (isPassport) {
+        updatePayload.visitor = {
+          email: draft.email || undefined,
+          birthDate: draft.birthDate || undefined,
+          borderNumber: draft.borderNumber || undefined,
+          passportNumber: draft.idNumber,
+          licenseNumber: draft.licenseNumber || undefined,
+          licenseExpiryDate: draft.licenseExpiryDate || undefined,
+          licenseIssuePlace: draft.licenseIssuePlace || undefined,
+          countryId: 1,
+          identityCopyNumber: draft.idCopyNumber || undefined,
+          identityExpiryDate: draft.idExpiryDate || undefined,
+        };
+      } else if (isGulf) {
+        updatePayload.gulf = {
+          email: draft.email || undefined,
+          birthDate: draft.birthDate || undefined,
+          beneficiaryIdNumber: draft.idNumber,
+          licenseNumber: draft.licenseNumber || undefined,
+          licenseExpiryDate: draft.licenseExpiryDate || undefined,
+          licenseIssuePlace: draft.licenseIssuePlace || undefined,
+          countryId: 1,
+          identityCopyNumber: draft.idCopyNumber || undefined,
+          identityExpiryDate: draft.idExpiryDate || undefined,
+        };
+      }
+
+      // Strip undefined/null values to avoid sending them
+      Object.keys(updatePayload).forEach((key) => {
+        if (updatePayload[key] === undefined || updatePayload[key] === null) {
+          delete updatePayload[key];
+        }
+      });
+
+      await customerService.update(Number(client.id), updatePayload);
+
+      setClient((prev) => prev && {
+        ...prev,
+        ...draft,
+        hijriBirthDate: isSaudi && draft.birthDate ? parseInt(draft.birthDate) : undefined,
+        birthDate: isSaudi ? undefined : draft.birthDate,
+      });
+      setEditing(false);
+      setDraft(null);
+      setSavedToast(true);
+      setTimeout(() => setSavedToast(false), 2200);
+    } catch (err) {
+      console.error("Error updating customer:", err);
+      alert(T("Failed to save customer. Please check the fields and try again.", "فشل حفظ بيانات العميل. يرجى التحقق من الحقول والمحاولة مرة أخرى.", ar));
+    }
   }
 
   function updateDraft<K extends keyof EditableFields>(key: K, value: EditableFields[K]) {
@@ -137,6 +365,7 @@ export default function CustomerDetailPage() {
       return [
         { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
         addressField,
+        { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: d.birthDate ?? "", onChange: (v) => updateDraft("birthDate", v) },
         { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: d.licenseNumber, onChange: (v) => updateDraft("licenseNumber", v) },
         { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: d.idExpiryDate ?? "", onChange: (v) => updateDraft("idExpiryDate", v) },
         { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: d.licenseIssuePlace ?? "", onChange: (v) => updateDraft("licenseIssuePlace", v) },
@@ -150,6 +379,7 @@ export default function CustomerDetailPage() {
       addressField,
       { key: "borderNumber", labelEn: "Border No.", labelAr: "رقم الحدود", required: true, type: "text", value: d.borderNumber ?? "", onChange: (v) => updateDraft("borderNumber", v) },
       { key: "passportNumber", labelEn: "Passport No.", labelAr: "رقم الجواز", required: true, type: "text", value: d.idNumber, onChange: (v) => updateDraft("idNumber", v) },
+      { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: d.birthDate ?? "", onChange: (v) => updateDraft("birthDate", v) },
       { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: d.licenseNumber, onChange: (v) => updateDraft("licenseNumber", v) },
       { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: d.licenseExpiryDate ?? "", onChange: (v) => updateDraft("licenseExpiryDate", v) },
       { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: d.licenseIssuePlace ?? "", onChange: (v) => updateDraft("licenseIssuePlace", v) },
@@ -176,7 +406,9 @@ export default function CustomerDetailPage() {
     [
       T("Mobile phone", "رقم الجوال", ar),
       <div key="phone-val" className="flex items-center gap-2">
-        <span>{client.phone}</span>
+        <span dir="ltr" className="inline-block whitespace-nowrap" style={{ unicodeBidi: "embed" }}>
+          {formatPhone(client.phone)}
+        </span>
         {phoneVerified && (
           <Badge variant="success" className="mk-overline py-1 px-2 leading-none shrink-0">
             {T("Verified", "تم التحقق", ar)}
@@ -257,7 +489,6 @@ export default function CustomerDetailPage() {
             <Avatar name={ar ? client.nameAr : client.name} size="lg" className={client.blacklisted ? "grayscale opacity-50" : ""} />
             <div>
               <div className="mk-body leading-tight text-mk-ink-900">{ar ? client.nameAr : client.name}</div>
-              <p className="mk-caption font-mono mt-1 text-mk-ink-400">ID: {client.id}</p>
               <div className="flex gap-2 mt-2 flex-wrap">
                 {client.blacklisted ? (
                   <Badge variant="danger" dot>{T("Blacklisted", "قائمة سوداء", ar)}</Badge>
@@ -279,9 +510,14 @@ export default function CustomerDetailPage() {
           <div className="flex items-center justify-between mt-4 mb-2">
             <span className="mk-overline uppercase tracking-wider text-mk-ink-500">{T("Profile details", "بيانات العميل", ar)}</span>
             {!editing ? (
-              <Button variant="ghost" size="sm" onClick={startEditing}>
-                <Pencil size={12} /> {T("Edit", "تعديل", ar)}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={startEditing}>
+                  <Pencil size={12} /> {T("Edit", "تعديل", ar)}
+                </Button>
+                <Button variant="ghost" size="sm" className="text-mk-danger hover:bg-mk-danger/10" onClick={() => setShowDeleteModal(true)}>
+                  <Trash2 size={12} /> {T("Delete", "حذف", ar)}
+                </Button>
+              </div>
             ) : draft && (
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={cancelEditing}>
@@ -368,7 +604,8 @@ export default function CustomerDetailPage() {
                       </Badge>
                     )
                   }
-                  isRtl={ar}
+                  dir="ltr"
+                  isRtl={false}
                 />
                 <EditField
                   label={T("Email", "البريد الإلكتروني", ar)}
@@ -502,6 +739,28 @@ export default function CustomerDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)} variant="centered" size="sm" title={T("Delete customer?", "حذف العميل؟", ar)}>
+        <div className="flex flex-col gap-5 p-2">
+          <p className="mk-body text-mk-ink-700">
+            {T(
+              `Are you sure you want to delete ${client?.name || client?.nameAr || "this customer"}? This action cannot be undone.`,
+              `هل أنت متأكد من حذف ${client?.nameAr || client?.name || "هذا العميل"}؟ لا يمكن التراجع عن هذا الإجراء.`,
+              ar
+            )}
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowDeleteModal(false)} disabled={deleting}>
+              {T("Cancel", "إلغاء", ar)}
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              {T("Delete", "حذف", ar)}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

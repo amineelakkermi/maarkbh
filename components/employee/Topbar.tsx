@@ -23,13 +23,12 @@ export function EmployeeTopbar() {
   const isContractDetail = path.startsWith("/employee/contracts/") && path !== "/employee/contracts";
   const contractId = isContractDetail ? path.split("/").pop() : null;
   const isCustomerDetail = path.startsWith("/employee/customer/") && path !== "/employee/customer" && path !== "/employee/customer/inquiry";
-  const customerId = isCustomerDetail ? path.split("/").pop() : null;
   const isDriverDetail = path.startsWith("/employee/drivers/") && path !== "/employee/drivers";
   const driverId = isDriverDetail ? path.split("/").pop() : null;
   const meta = isContractDetail
     ? { en: `Contract ${contractId}`, ar: `عقد ${contractId}`, sub: "Contract details", subAr: "تفاصيل العقد" }
     : isCustomerDetail
-    ? { en: `Customer ${customerId}`, ar: `العميل ${customerId}`, sub: "Profile & booking history", subAr: "البيانات والحجوزات" }
+    ? { en: "Customer details", ar: "بيانات العميل" }
     : isDriverDetail
     ? { en: `Driver ${driverId}`, ar: `السائق ${driverId}`, sub: "Profile & booking history", subAr: "البيانات والحجوزات" }
     : PAGE_META[path] ?? { en: "Maarkbh", ar: "مركبة" };

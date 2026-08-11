@@ -2,19 +2,23 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { useAdmin } from "@/contexts/AdminContext";
 import { EmployeeSidebar } from "@/components/employee/Sidebar";
 import { EmployeeTopbar } from "@/components/employee/Topbar";
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn, sidebarOpen, setSidebarOpen } = useAdmin();
+  const { isLoggedIn, isInitialized } = useAuth();
+  const { sidebarOpen, setSidebarOpen } = useAdmin();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoggedIn) router.push("/");
-  }, [isLoggedIn, router]);
+    if (isInitialized && !isLoggedIn) {
+      router.replace("/");
+    }
+  }, [isInitialized, isLoggedIn, router]);
 
-  if (!isLoggedIn) {
+  if (!isInitialized || !isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-mk-ink-50">
         <div className="flex flex-col items-center gap-3">

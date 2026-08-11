@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Search, UserPlus, ChevronRight, CheckCircle, Phone, CreditCard, X, User, FileSignature, Loader2, FileWarning,
+  Search, UserPlus, ChevronRight, CheckCircle, Phone, CreditCard, X, User, FileSignature, Loader2, FileWarning, Plus, Trash2,
 } from "lucide-react";
-import { Avatar, Badge, HijriDatePicker, Button, Input, Select, Drawer, DrawerHeader, DrawerFooter, IconButton, useToast } from "@/components/ui";
+import { Avatar, Badge, HijriDatePicker, Button, Input, Select, Drawer, DrawerHeader, DrawerFooter, IconButton, Modal, useToast } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
-import { customerService } from "@/lib/api-services";
-import { transliterateArabicName } from "@/lib/transliterate";
+import { customerService, attachmentService, countryService } from "@/lib/api-services";
+import { formatPhone, normalizeKycStatus } from "@/lib/formatting";
 import { CLIENTS } from "@/lib/data";
 
 const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
@@ -82,32 +82,37 @@ export default function CustomerListPage() {
       const response = await customerService.search({ pageNumber: 1, pageSize: 100 });
       
       // Transform API response to ClientProfile format
-      const transformedClients = response.items?.map((item: any) => ({
-        id: String(item.id),
-        name: item.fullNameEn || item.name || "",
-        nameAr: item.fullNameAr || item.nameAr || "",
-        phone: item.phoneNumber || "",
-        email: item.email,
-        idType: item.identityType === 1 ? "Saudi ID" : item.identityType === 2 ? "Iqama" : item.identityType === 3 ? "Passport" : item.identityType === 4 ? "GCC ID" : "Unknown",
-        idNumber: item.national?.idNumber || item.residence?.idNumber || item.visitor?.passportNumber || item.gulf?.idNumber || "",
-        idExpiryDate: item.national?.idExpiryDate || item.residence?.idExpiryDate || item.visitor?.idExpiryDate || item.gulf?.idExpiryDate,
-        birthDate: item.national?.birthDate || item.residence?.birthDate || item.visitor?.birthDate || item.gulf?.birthDate,
-        hijriBirthDate: item.national?.hijriBirthDate,
-        nationality: item.national?.nationality || item.residence?.nationality || item.visitor?.nationality || item.gulf?.nationality,
-        personAddress: item.address,
-        idCopyNumber: item.national?.idCopyNumber || item.residence?.idCopyNumber || item.visitor?.idCopyNumber || item.gulf?.idCopyNumber,
-        licenseIssuePlace: item.national?.licenseIssuePlace || item.residence?.licenseIssuePlace || item.visitor?.licenseIssuePlace || item.gulf?.licenseIssuePlace,
-        borderNumber: item.visitor?.borderNumber,
-        licenseNumber: item.national?.licenseNumber || item.residence?.licenseNumber || item.visitor?.licenseNumber || item.gulf?.licenseNumber || "",
-        licenseExpiryDate: item.national?.licenseExpiryDate || item.residence?.licenseExpiryDate || item.visitor?.licenseExpiryDate || item.gulf?.licenseExpiryDate,
-        contracts: item.contracts || 0,
-        rating: item.rating || 0,
-        kycStatus: item.verificationStatus === 1 ? "verified" : item.verificationStatus === 2 ? "pending" : "rejected",
-        yakeenStatus: item.yakeenStatus === 1 ? "verified" : item.yakeenStatus === 2 ? "pending" : "not_verified",
-        blacklisted: item.isBlacklisted || false,
-        joinDate: item.creationTime ? new Date(item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
-        history: [],
-      })) || [];
+      const transformedClients = response.items?.map((item: any) => {
+        const idTypeCode = item.identityType ?? item.idType;
+        const idType = idTypeCode === 1 ? "Saudi ID" : idTypeCode === 2 ? "Iqama" : idTypeCode === 3 ? "Passport" : idTypeCode === 4 ? "GCC ID" : "Unknown";
+        return {
+          id: String(item.id),
+          name: item.fullNameEn || item.name || "",
+          nameAr: item.fullNameAr || item.nameAr || "",
+          phone: item.phoneNumber || "",
+          email: item.email,
+          idType,
+          idNumber: item.idNumber || item.identityNumber || item.national?.beneficiaryIdNumber || item.residence?.beneficiaryIdNumber || item.visitor?.passportNumber || item.gulf?.beneficiaryIdNumber || "",
+          idExpiryDate: item.idExpiryDate || item.identityExpiryDate || item.national?.identityExpiryDate || item.residence?.identityExpiryDate || item.visitor?.identityExpiryDate || item.gulf?.identityExpiryDate,
+          birthDate: item.birthDate || item.national?.birthDate || item.residence?.birthDate || item.visitor?.birthDate || item.gulf?.birthDate,
+          hijriBirthDate: item.national?.hijriBirthDate ?? item.residence?.hijriBirthDate,
+          nationality: item.nationality || item.national?.nationality || item.residence?.nationality || item.visitor?.nationality || item.gulf?.nationality,
+          personAddress: item.address,
+          idCopyNumber: item.idCopyNumber || item.identityCopyNumber || item.national?.idCopyNumber || item.residence?.idCopyNumber || item.visitor?.identityCopyNumber || item.gulf?.identityCopyNumber,
+          licenseIssuePlace: item.licenseIssuePlace || item.national?.licenseIssuePlace || item.residence?.licenseIssuePlace || item.visitor?.licenseIssuePlace || item.gulf?.licenseIssuePlace,
+          borderNumber: item.visitor?.borderNumber,
+          licenseNumber: item.licenseNumber || item.national?.licenseNumber || item.residence?.licenseNumber || item.visitor?.licenseNumber || item.gulf?.licenseNumber || "",
+          licenseExpiryDate: item.licenseExpiryDate || item.national?.licenseExpiryDate || item.residence?.licenseExpiryDate || item.visitor?.licenseExpiryDate || item.gulf?.licenseExpiryDate,
+          contracts: item.contracts || 0,
+          rating: item.rating || 0,
+          kycStatus: normalizeKycStatus(item.verificationStatus),
+          yakeenStatus: item.yakeenStatus === 1 ? "verified" : item.yakeenStatus === 2 ? "pending" : "not_verified",
+          blacklisted: item.isBlacklisted || false,
+          joinDate: item.creationTime ? new Date(item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          history: [],
+          debts: [],
+        };
+      }) || [];
       
       setClients(transformedClients);
     } catch (err) {
@@ -128,9 +133,6 @@ export default function CustomerListPage() {
   // Add customer form state
   const [newName, setNewName] = useState("");
   const [newNameAr, setNewNameAr] = useState("");
-  // Tracks whether the employee typed the English name by hand — once they
-  // do, auto-transliteration from Arabic stops overwriting their edit.
-  const [englishNameEdited, setEnglishNameEdited] = useState(false);
   const [newPhone, setNewPhone] = useState("");
   const [newIdType, setNewIdType] = useState<"Saudi ID" | "Iqama" | "Passport" | "GCC ID">("Saudi ID");
   const [newId, setNewId] = useState("");
@@ -147,6 +149,52 @@ export default function CustomerListPage() {
   const [newBorderNumber, setNewBorderNumber] = useState("");
   const [added, setAdded] = useState(false);
 
+  // Countries selection (for Visitor type)
+  const [countries, setCountries] = useState<{ id: number; name: string; nameAr?: string; nameEn?: string }[]>([]);
+  const [newCountryId, setNewCountryId] = useState<string>("");
+
+  const [documentTypes, setDocumentTypes] = useState<any[]>([]);
+  const [newDocuments, setNewDocuments] = useState<{ documentType: number; file: File | null }[]>([]);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+
+  // Delete customer state
+  const [customerToDelete, setCustomerToDelete] = useState<ClientProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    customerService
+      .getDocumentTypes()
+      .then((res: any) => {
+        const list = res?.data ?? res?.items ?? res ?? [];
+        setDocumentTypes(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setDocumentTypes([]));
+
+    countryService
+      .search({ pageNumber: 1, pageSize: 200 })
+      .then((res: any) => {
+        const list = res?.data?.items ?? res?.items ?? res?.data ?? res ?? [];
+        const normalized = Array.isArray(list) ? list.map((c: any) => ({
+          id: c.id,
+          name: c.nameAr || c.nameEn || c.name || "",
+          nameAr: c.nameAr,
+          nameEn: c.nameEn,
+        })) : [];
+        setCountries(normalized);
+      })
+      .catch(() => setCountries([]));
+  }, []);
+
+  const addDocumentRow = () => {
+    setNewDocuments((prev) => [...prev, { documentType: documentTypes[0]?.id ?? documentTypes[0]?.value ?? 1, file: null }]);
+  };
+  const updateDocumentRow = (index: number, patch: Partial<{ documentType: number; file: File | null }>) => {
+    setNewDocuments((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+  };
+  const removeDocumentRow = (index: number) => {
+    setNewDocuments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Required field set per identity type — mirrors the new-contract flow's
   // per-type identity form so registering a customer uses the exact same fields.
   type IdentityFieldDef = {
@@ -158,21 +206,24 @@ export default function CustomerListPage() {
     const idCopyNumberField: IdentityFieldDef = { key: "idCopyNumber", labelEn: "ID Copy No.", labelAr: "رقم نسخة الهوية", required: true, type: "text", value: newIdCopyNumber, onChange: setNewIdCopyNumber };
 
     if (newIdType === "Saudi ID" || newIdType === "Iqama") {
-      return [
+      const fields: IdentityFieldDef[] = [
         { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: newId, onChange: setNewId },
         addressField,
-        { key: "birthDate", labelEn: newIdType === "Saudi ID" ? "Date of Birth (Hijri)" : "Date of Birth", labelAr: newIdType === "Saudi ID" ? "تاريخ الميلاد (هجري)" : "تاريخ الميلاد", required: true, type: "text", value: newIdType === "Saudi ID" ? newHijriBirthDate : newBirthDate, onChange: newIdType === "Saudi ID" ? setNewHijriBirthDate : setNewBirthDate },
+        { key: "birthDate", labelEn: newIdType === "Saudi ID" ? "Date of Birth (Hijri)" : "Date of Birth", labelAr: newIdType === "Saudi ID" ? "تاريخ الميلاد (هجري)" : "تاريخ الميلاد", required: true, type: newIdType === "Saudi ID" ? "hijri" : "date", value: newIdType === "Saudi ID" ? newHijriBirthDate : newBirthDate, onChange: newIdType === "Saudi ID" ? setNewHijriBirthDate : setNewBirthDate },
       ];
+      if (newIdType === "Saudi ID") {
+        fields.push({ key: "birthDateGregorian", labelEn: "Date of Birth (Gregorian, optional)", labelAr: "تاريخ الميلاد (ميلادي، اختياري)", required: false, type: "date", value: newBirthDate, onChange: setNewBirthDate });
+      }
+      return fields;
     }
     if (newIdType === "GCC ID") {
       return [
         { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: newId, onChange: setNewId },
         addressField,
+        { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: newBirthDate, onChange: setNewBirthDate },
         { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: newLicense, onChange: setNewLicense },
         { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: newIdExpiry, onChange: setNewIdExpiry },
         { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: newLicenseIssuePlace, onChange: setNewLicenseIssuePlace },
-        { key: "email", labelEn: "Email", labelAr: "البريد الإلكتروني", required: true, type: "email", value: newEmail, onChange: setNewEmail },
-        { key: "country", labelEn: "Country", labelAr: "الدولة", required: true, type: "text", value: newNationality, onChange: setNewNationality },
         idCopyNumberField,
         { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: newLicenseExpiry, onChange: setNewLicenseExpiry },
       ];
@@ -182,11 +233,10 @@ export default function CustomerListPage() {
       addressField,
       { key: "borderNumber", labelEn: "Border No.", labelAr: "رقم الحدود", required: true, type: "text", value: newBorderNumber, onChange: setNewBorderNumber },
       { key: "passportNumber", labelEn: "Passport No.", labelAr: "رقم الجواز", required: true, type: "text", value: newId, onChange: setNewId },
+      { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: newBirthDate, onChange: setNewBirthDate },
       { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: newLicense, onChange: setNewLicense },
       { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: newLicenseExpiry, onChange: setNewLicenseExpiry },
       { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: newLicenseIssuePlace, onChange: setNewLicenseIssuePlace },
-      { key: "email", labelEn: "Email", labelAr: "البريد الإلكتروني", required: true, type: "email", value: newEmail, onChange: setNewEmail },
-      { key: "country", labelEn: "Country", labelAr: "الدولة", required: true, type: "text", value: newNationality, onChange: setNewNationality },
       idCopyNumberField,
       { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: newIdExpiry, onChange: setNewIdExpiry },
     ];
@@ -203,7 +253,8 @@ export default function CustomerListPage() {
   });
 
   function isCustomerFormInvalid() {
-    if (!newNameAr || !newPhone) return true;
+    if (!newNameAr || !newName || !newPhone) return true;
+    if ((newIdType === "Passport" || newIdType === "GCC ID") && !newCountryId) return true;
     return newCustomerIdentityFields().some((f) => f.required && !f.value);
   }
 
@@ -212,7 +263,21 @@ export default function CustomerListPage() {
 
     try {
       setAdded(true);
-      
+
+      // Upload any attached documents first and collect their file IDs
+      setUploadingDocuments(true);
+      const uploadedDocuments: { documentType: number; fileId: number; sortOrder: number }[] = [];
+      for (let i = 0; i < newDocuments.length; i++) {
+        const doc = newDocuments[i];
+        if (!doc.file) continue;
+        const uploadResult = await attachmentService.upload(doc.file);
+        const fileId = uploadResult?.data?.id ?? uploadResult?.id ?? uploadResult?.fileId ?? uploadResult?.data?.fileId;
+        if (typeof fileId === "number") {
+          uploadedDocuments.push({ documentType: doc.documentType, fileId, sortOrder: i + 1 });
+        }
+      }
+      setUploadingDocuments(false);
+
       // Map ID type to enum
       const identityTypeMap: Record<string, number> = {
         "Saudi ID": 1,
@@ -222,7 +287,7 @@ export default function CustomerListPage() {
       };
       
       const createRequest = {
-        fullNameEn: newName || transliterateArabicName(newNameAr),
+        fullNameEn: newName,
         fullNameAr: newNameAr,
         phoneNumber: newPhone.startsWith("+966") || newPhone.startsWith("+") ? newPhone : `+966 ${newPhone}`,
         email: newEmail || undefined,
@@ -230,36 +295,41 @@ export default function CustomerListPage() {
         address: newAddress || undefined,
         national: newIdType === "Saudi ID" ? {
           beneficiaryIdNumber: newId,
-          birthDate: newHijriBirthDate ? new Date().toISOString() : "", // Use ISO format for now
-          isHijriBirthDate: true,
+          birthDate: newBirthDate || undefined,
+          hijriBirthDate: newHijriBirthDate ? parseInt(newHijriBirthDate, 10) : undefined,
+          isHijriBirthDate: !newBirthDate,
           email: newEmail || undefined,
         } : undefined,
         residence: newIdType === "Iqama" ? {
           beneficiaryIdNumber: newId,
-          birthDate: newBirthDate ? new Date(newBirthDate).toISOString() : "",
+          birthDate: newBirthDate || undefined,
           isHijriBirthDate: false,
           email: newEmail || undefined,
         } : undefined,
         visitor: newIdType === "Passport" ? {
           passportNumber: newId,
           borderNumber: newBorderNumber || undefined,
-          birthDate: newBirthDate ? new Date(newBirthDate).toISOString() : "",
-          nationality: newNationality,
-          email: newEmail,
+          birthDate: newBirthDate || undefined,
+          email: newEmail || undefined,
           licenseNumber: newLicense || undefined,
-          licenseExpiryDate: newLicenseExpiry || "",
+          licenseExpiryDate: newLicenseExpiry || undefined,
           licenseIssuePlace: newLicenseIssuePlace || undefined,
-          countryId: 1,
-          identityExpiryDate: newIdExpiry || "",
+          countryId: newCountryId ? Number(newCountryId) : 1,
+          identityExpiryDate: newIdExpiry || undefined,
           identityCopyNumber: newIdCopyNumber || undefined,
         } : undefined,
         gulf: newIdType === "GCC ID" ? {
           beneficiaryIdNumber: newId,
-          nationality: newNationality,
-          email: newEmail,
-          birthDate: newBirthDate ? new Date(newBirthDate).toISOString() : "",
-          isHijriBirthDate: false,
+          email: newEmail || undefined,
+          birthDate: newBirthDate || undefined,
+          licenseNumber: newLicense || undefined,
+          licenseExpiryDate: newLicenseExpiry || undefined,
+          licenseIssuePlace: newLicenseIssuePlace || undefined,
+          countryId: newCountryId ? Number(newCountryId) : 1,
+          identityCopyNumber: newIdCopyNumber || undefined,
+          identityExpiryDate: newIdExpiry || undefined,
         } : undefined,
+        documents: uploadedDocuments.length > 0 ? uploadedDocuments : undefined,
       };
 
       await customerService.create(createRequest as any);
@@ -269,16 +339,34 @@ export default function CustomerListPage() {
       
       setShowAdd(false);
       setAdded(false);
-      setNewName(""); setNewNameAr(""); setEnglishNameEdited(false); setNewPhone(""); setNewIdType("Saudi ID"); setNewId("");
+      setNewName(""); setNewNameAr(""); setNewPhone(""); setNewIdType("Saudi ID"); setNewId("");
       setNewNationality("Saudi"); setNewIdExpiry(""); setNewBirthDate(""); setNewHijriBirthDate("");
       setNewLicense(""); setNewLicenseExpiry(""); setNewEmail(""); setNewAddress("");
-      setNewIdCopyNumber(""); setNewLicenseIssuePlace(""); setNewBorderNumber("");
+      setNewIdCopyNumber(""); setNewLicenseIssuePlace(""); setNewBorderNumber(""); setNewCountryId("");
+      setNewDocuments([]);
       
       showToast(T("🟢 Customer added successfully!", "🟢 تم إضافة العميل بنجاح!", ar));
     } catch (err) {
       console.error("Error creating customer:", err);
       setAdded(false);
+      setUploadingDocuments(false);
       showToast(T("Failed to add customer", "فشل في إضافة العميل", ar));
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!customerToDelete) return;
+    try {
+      setIsDeleting(true);
+      await customerService.delete(Number(customerToDelete.id));
+      showToast(T("Customer deleted successfully", "تم حذف العميل بنجاح", ar));
+      await loadCustomers();
+    } catch (err) {
+      console.error("Error deleting customer:", err);
+      showToast(T("Failed to delete customer", "فشل في حذف العميل", ar));
+    } finally {
+      setIsDeleting(false);
+      setCustomerToDelete(null);
     }
   }
 
@@ -327,13 +415,14 @@ export default function CustomerListPage() {
       {/* Customers table */}
       <div className="rounded-xl overflow-hidden mk-surface">
         <div
-          className="grid px-5 py-3 mk-overline uppercase text-mk-ink-400 tracking-wider border-b border-mk-ink-100 bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_36px]"
+          className="grid px-5 py-3 mk-overline uppercase text-mk-ink-400 tracking-wider border-b border-mk-ink-100 bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_40px_36px]"
         >
           <span>{T("Customer", "العميل", ar)}</span>
           <span>{T("Phone", "الهاتف", ar)}</span>
           <span>{T("National ID", "الهوية", ar)}</span>
           <span>{T("Contracts", "العقود", ar)}</span>
           <span>{T("Status", "الحالة", ar)}</span>
+          <span />
           <span />
           <span />
         </div>
@@ -366,7 +455,7 @@ export default function CustomerListPage() {
               tabIndex={0}
               onClick={() => router.push(`/employee/customer/${c.id}`)}
               onKeyDown={(e) => { if (e.key === "Enter") router.push(`/employee/customer/${c.id}`); }}
-              className="grid items-center px-5 py-4 cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_36px]"
+              className="grid items-center px-5 py-4 cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_40px_36px]"
               style={{
                 borderBottom: idx < filtered.length - 1 ? "1px solid var(--color-mk-border)" : "none",
                 borderInlineStart: c.blacklisted ? "3px solid var(--color-mk-danger)" : "none",
@@ -379,13 +468,14 @@ export default function CustomerListPage() {
                   <div className="mk-body text-mk-ink-900 flex items-center gap-2 flex-wrap">
                     <span>{ar ? c.nameAr : c.name}</span>
                   </div>
-                  <div className="mk-overline text-mk-ink-400">{c.id}</div>
                 </div>
               </div>
               {/* Phone */}
               <div className="flex items-center gap-2 mk-label text-mk-ink-600">
                 <Phone size={12} className="text-mk-ink-400" />
-                {c.phone}
+                <span dir="ltr" className="inline-block whitespace-nowrap" style={{ unicodeBidi: "embed" }}>
+                  {formatPhone(c.phone)}
+                </span>
               </div>
               {/* ID */}
               <div>
@@ -421,6 +511,17 @@ export default function CustomerListPage() {
                   </Link>
                 )}
               </div>
+              {/* Delete */}
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  title={T("Delete customer", "حذف العميل", ar)}
+                  onClick={(e) => { e.stopPropagation(); setCustomerToDelete(c); }}
+                  className="flex items-center justify-center w-7 h-7 rounded-full bg-mk-danger/10 text-mk-danger hover:bg-mk-danger/20 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
               {/* Arrow */}
               <div className="flex justify-end">
                 <ChevronRight size={16} className="text-mk-ink-300" />
@@ -444,22 +545,14 @@ export default function CustomerListPage() {
                 label={<>{T("Full name (Arabic)", "الاسم الكامل (عربي)", ar)} <span className="text-mk-danger">*</span></>}
                 placeholder="مثال: أحمد المطيري"
                 value={newNameAr}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setNewNameAr(v);
-                  if (!englishNameEdited) setNewName(transliterateArabicName(v));
-                }}
+                onChange={(e) => setNewNameAr(e.target.value)}
               />
               <Input
                 variant="muted"
-                label={T("Full name (English, optional)", "الاسم الكامل (إنجليزي، اختياري)", ar)}
+                label={<>{T("Full name (English)", "الاسم الكامل (إنجليزي)", ar)} <span className="text-mk-danger">*</span></>}
                 placeholder="e.g. Ahmed Al-Mutairi"
                 value={newName}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setNewName(v);
-                  setEnglishNameEdited(v !== "");
-                }}
+                onChange={(e) => setNewName(e.target.value)}
               />
               <Input
                 variant="muted"
@@ -469,6 +562,15 @@ export default function CustomerListPage() {
                 placeholder="e.g. +966 50 123 4567"
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
+              />
+
+              <Input
+                variant="muted"
+                type="email"
+                label={T("Email", "البريد الإلكتروني", ar)}
+                placeholder="example@email.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
               />
 
               <div className="flex flex-col gap-2">
@@ -490,16 +592,81 @@ export default function CustomerListPage() {
 
               {/* Dynamic identity fields — depends on ID Type, matches the new-contract flow exactly */}
               {newCustomerIdentityFields().map((f) => (
-                <Input
-                  key={f.key}
-                  variant="muted"
-                  className="font-mono"
-                  type={f.type}
-                  label={<>{T(f.labelEn, f.labelAr, ar)} {f.required && <span className="text-mk-danger">*</span>}</>}
-                  value={f.value}
-                  onChange={(e) => f.onChange(e.target.value)}
-                />
+                f.type === "hijri" ? (
+                  <div key={f.key} className="flex flex-col gap-2">
+                    <label className="mk-caption text-mk-ink-700">
+                      {T(f.labelEn, f.labelAr, ar)} {f.required && <span className="text-mk-danger">*</span>}
+                    </label>
+                    <HijriDatePicker value={f.value} onChange={f.onChange} ar={ar} />
+                  </div>
+                ) : (
+                  <Input
+                    key={f.key}
+                    variant="muted"
+                    className="font-mono"
+                    type={f.type}
+                    label={<>{T(f.labelEn, f.labelAr, ar)} {f.required && <span className="text-mk-danger">*</span>}</>}
+                    value={f.value}
+                    onChange={(e) => f.onChange(e.target.value)}
+                  />
+                )
               ))}
+
+              {/* Country selection for Visitor only */}
+              {(newIdType === "Passport" || newIdType === "GCC ID") && (
+                <div className="flex flex-col gap-2">
+                  <label className="mk-caption text-mk-ink-700">
+                    {T("Country", "الدولة", ar)} <span className="text-mk-danger">*</span>
+                  </label>
+                  <Select value={newCountryId} onChange={(e) => setNewCountryId(e.target.value)}>
+                    <option value="">{T("Select country...", "اختر الدولة...", ar)}</option>
+                    {countries.map((country) => (
+                      <option key={country.id} value={String(country.id)}>
+                        {ar ? country.nameAr || country.name : country.nameEn || country.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {/* Documents (optional) */}
+              <div className="flex flex-col gap-3 pt-2 border-t border-mk-border">
+                <div className="flex items-center justify-between">
+                  <label className="mk-caption text-mk-ink-700">{T("Documents (optional)", "المستندات (اختياري)", ar)}</label>
+                  <Button variant="outline" size="sm" onClick={addDocumentRow}>
+                    <Plus size={13} /> {T("Add document", "إضافة مستند", ar)}
+                  </Button>
+                </div>
+                {newDocuments.map((doc, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select
+                      className="flex-1"
+                      value={doc.documentType}
+                      onChange={(e) => updateDocumentRow(index, { documentType: Number(e.target.value) })}
+                    >
+                      {documentTypes.length > 0 ? (
+                        documentTypes.map((dt: any) => (
+                          <option key={dt.id ?? dt.value} value={dt.id ?? dt.value}>
+                            {ar ? dt.nameAr || dt.name : dt.nameEn || dt.name}
+                          </option>
+                        ))
+                      ) : (
+                        [1, 2, 3, 4].map((n) => (
+                          <option key={n} value={n}>{T(`Document type ${n}`, `نوع المستند ${n}`, ar)}</option>
+                        ))
+                      )}
+                    </Select>
+                    <input
+                      type="file"
+                      className="flex-1 mk-body-sm text-mk-ink-700"
+                      onChange={(e) => updateDocumentRow(index, { file: e.target.files?.[0] ?? null })}
+                    />
+                    <IconButton size="sm" variant="ghost" onClick={() => removeDocumentRow(index)}>
+                      <Trash2 size={14} className="text-mk-danger" />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -509,7 +676,7 @@ export default function CustomerListPage() {
             </Button>
             <Button
               variant="primary"
-              disabled={isCustomerFormInvalid()}
+              disabled={isCustomerFormInvalid() || uploadingDocuments}
               onClick={handleAdd}
               className={`flex-1 ${added ? "bg-mk-mint-500 hover:bg-mk-mint-500" : ""}`}
             >
@@ -518,6 +685,33 @@ export default function CustomerListPage() {
           </DrawerFooter>
         </div>
       </Drawer>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        open={!!customerToDelete}
+        onClose={() => setCustomerToDelete(null)}
+        variant="centered"
+        size="sm"
+        title={T("Delete customer?", "حذف العميل؟", ar)}
+      >
+        <div className="flex flex-col gap-5 p-2">
+          <p className="mk-body text-mk-ink-700">
+            {T(
+              `Are you sure you want to delete ${customerToDelete?.name || customerToDelete?.nameAr || "this customer"}? This action cannot be undone.`,
+              `هل أنت متأكد من حذف ${customerToDelete?.nameAr || customerToDelete?.name || "هذا العميل"}؟ لا يمكن التراجع عن هذا الإجراء.`,
+              ar
+            )}
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCustomerToDelete(null)} disabled={isDeleting}>
+              {T("Cancel", "إلغاء", ar)}
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleDeleteCustomer} disabled={isDeleting}>
+              {isDeleting ? <><Loader2 size={13} className="animate-spin" /> {T("Deleting...", "جارٍ الحذف...", ar)}</> : <><Trash2 size={13} /> {T("Delete", "حذف", ar)}</>}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

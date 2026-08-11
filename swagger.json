@@ -41,6 +41,123 @@
         ]
       }
     },
+    "/api/admin/customer-warehouse/stats": {
+      "get": {
+        "tags": [
+          "AdminCustomerWarehouse"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/admin/customer-warehouse/search": {
+      "post": {
+        "tags": [
+          "AdminCustomerWarehouse"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/admin/customer-warehouse/import/template": {
+      "get": {
+        "tags": [
+          "AdminCustomerWarehouse"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/admin/customer-warehouse/import/excel": {
+      "post": {
+        "tags": [
+          "AdminCustomerWarehouse"
+        ],
+        "parameters": [
+          {
+            "name": "sourceName",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "Excel Import"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/admin/tenants/{tenantId}/users": {
       "get": {
         "tags": [
@@ -420,7 +537,8 @@
                     "default": "password"
                   },
                   "username": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Username or email."
                   },
                   "password": {
                     "type": "string",
@@ -924,6 +1042,40 @@
         ]
       }
     },
+    "/api/customers/tajeer-statuses": {
+      "get": {
+        "tags": [
+          "Customers"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/customers/document-types": {
+      "get": {
+        "tags": [
+          "Customers"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/customers": {
       "post": {
         "tags": [
@@ -1084,6 +1236,98 @@
       "delete": {
         "tags": [
           "Customers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/customer-warehouse/inquiry": {
+      "post": {
+        "tags": [
+          "CustomerWarehouse"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarehouseInquiryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/customer-warehouse/{id}": {
+      "get": {
+        "tags": [
+          "CustomerWarehouse"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/customer-warehouse/{id}/import": {
+      "post": {
+        "tags": [
+          "CustomerWarehouse"
         ],
         "parameters": [
           {
@@ -2733,6 +2977,13 @@
           "gulf": {
             "$ref": "#/components/schemas/GulfIdentityInfo"
           },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerDocumentDto"
+            },
+            "nullable": true
+          },
           "isActive": {
             "type": "boolean"
           }
@@ -2844,6 +3095,33 @@
         },
         "additionalProperties": false
       },
+      "CustomerDocumentDto": {
+        "type": "object",
+        "properties": {
+          "documentType": {
+            "$ref": "#/components/schemas/CustomerDocumentType"
+          },
+          "fileId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CustomerDocumentType": {
+        "enum": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
       "CustomerReasonRequest": {
         "type": "object",
         "properties": {
@@ -2903,6 +3181,10 @@
           "email": {
             "type": "string",
             "nullable": true
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date"
           },
           "beneficiaryIdNumber": {
             "type": "string",
@@ -3001,18 +3283,17 @@
       },
       "LookupSection": {
         "enum": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8
+          "VehicleMakes",
+          "VehicleModels",
+          "PlateTypes",
+          "InsuranceCompanies",
+          "InsuranceTypes",
+          "VehicleFeatureTypes",
+          "VehicleEnums",
+          "Countries",
+          "Branches"
         ],
-        "type": "integer",
-        "format": "int32"
+        "type": "string"
       },
       "NationalIdentityInfo": {
         "type": "object",
@@ -3023,7 +3304,13 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date"
+            "format": "date",
+            "nullable": true
+          },
+          "hijriBirthDate": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           },
           "email": {
             "type": "string",
@@ -3113,7 +3400,13 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date"
+            "format": "date",
+            "nullable": true
+          },
+          "hijriBirthDate": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
           },
           "email": {
             "type": "string",
@@ -3318,6 +3611,13 @@
           },
           "gulf": {
             "$ref": "#/components/schemas/GulfIdentityInfo"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerDocumentDto"
+            },
+            "nullable": true
           },
           "isActive": {
             "type": "boolean"
@@ -3763,6 +4063,10 @@
             "type": "string",
             "nullable": true
           },
+          "birthDate": {
+            "type": "string",
+            "format": "date"
+          },
           "borderNumber": {
             "type": "string",
             "nullable": true
@@ -3794,6 +4098,24 @@
           "identityExpiryDate": {
             "type": "string",
             "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WarehouseInquiryRequest": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "nullable": true
+          },
+          "pageNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pageSize": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
