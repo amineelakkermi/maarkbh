@@ -46,5 +46,8 @@ export function useAdmin() {
     // UI
     sidebarOpen: ui.sidebarOpen,
     setSidebarOpen: ui.setSidebarOpen,
+    sidebarCollapsed: ui.sidebarCollapsed,
+    setSidebarCollapsed: ui.setSidebarCollapsed,
+    toggleSidebarCollapsed: ui.toggleSidebarCollapsed,
   };
 }

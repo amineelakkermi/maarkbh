@@ -1,12 +1,12 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Sun, PlusCircle, KeyRound, Undo2,
   CalendarCheck, Users, CarFront, User, UserSearch,
 } from "lucide-react";
 import { useAdmin } from "@/contexts/AdminContext";
-import { SidebarShell, SidebarNavLink, SidebarRoleSwitcher, SidebarUserCard } from "@/components/shared/SidebarShell";
+import { SidebarShell, SidebarNavLink, SidebarUserCard } from "@/components/shared/SidebarShell";
 
 const NAV_ITEMS = [
   { href: "/employee/today", icon: Sun, label: "Today", labelAr: "اليوم", badge: 5 },
@@ -22,8 +22,7 @@ const NAV_ITEMS = [
 
 export function EmployeeSidebar() {
   const path = usePathname();
-  const router = useRouter();
-  const { dir, toggleDir, sidebarOpen, setSidebarOpen } = useAdmin();
+  const { dir, toggleDir, sidebarOpen, setSidebarOpen, sidebarCollapsed, logout } = useAdmin();
   const ar = dir === "rtl";
 
   const handleNavClick = () => setSidebarOpen(false);
@@ -37,16 +36,6 @@ export function EmployeeSidebar() {
       brandEn="Maarkbh"
       footer={
         <div className="rounded-lg p-4 flex flex-col gap-3 bg-mk-blue-50">
-          <div className="mk-overline text-mk-blue-700">{ar ? "الدور الحالي" : "Role"}</div>
-          <SidebarRoleSwitcher
-            ar={ar}
-            activeIsFirst={false}
-            firstLabelAr="مالك"
-            firstLabelEn="Owner"
-            secondLabelAr="موظف"
-            secondLabelEn="Front desk"
-            onSelectOther={() => { router.push("/dashboard"); setSidebarOpen(false); }}
-          />
           <SidebarUserCard
             ar={ar}
             initials={{ ar: "خم", en: "KM" }}
@@ -56,11 +45,13 @@ export function EmployeeSidebar() {
             sub="Front desk · Olaya · عر/EN"
             subAr="موظف استقبال · العليا · عر/EN"
             onToggleDir={toggleDir}
+            onLogout={logout}
+            collapsed={sidebarCollapsed}
           />
         </div>
       }
     >
-      <div className="px-4 pb-2 pt-1 mk-overline text-mk-ink-500">{ar ? "الوردية" : "Shift"}</div>
+      <div className={`px-4 pb-2 pt-1 mk-overline text-mk-ink-500 ${sidebarCollapsed ? "lg:hidden" : ""}`}>{ar ? "الوردية" : "Shift"}</div>
       {NAV_ITEMS.map((item) => {
         const bestMatch = NAV_ITEMS
           .filter((navItem) => path === navItem.href || path?.startsWith(navItem.href + "/"))
@@ -78,6 +69,7 @@ export function EmployeeSidebar() {
             active={active}
             badge={item.badge}
             onClick={handleNavClick}
+            collapsed={sidebarCollapsed}
           />
         );
       })}

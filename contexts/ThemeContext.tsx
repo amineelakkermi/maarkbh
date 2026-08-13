@@ -30,14 +30,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply dark mode to DOM
   useEffect(() => {
     const html = document.documentElement;
-    // Dark mode is applied to all pages except root "/"
-    const isThemedRoute = pathname && pathname !== "/";
-    if (isThemedRoute && isDark) {
+    if (isDark) {
       html.setAttribute("data-theme", "dark");
     } else {
       html.removeAttribute("data-theme");
     }
-  }, [isDark, pathname]);
+  }, [isDark]);
 
   const toggleDark = () => {
     setIsDark((prev) => {

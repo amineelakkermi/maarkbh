@@ -1,13 +1,13 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Map, CalendarDays, Car,
   ShieldCheck, ClockAlert, Ban,
   BarChart3, Undo2, Tag, Users, Building, Shield,
 } from "lucide-react";
 import { useAdmin } from "@/contexts/AdminContext";
-import { SidebarShell, SidebarNavLink, SidebarRoleSwitcher, SidebarUserCard } from "@/components/shared/SidebarShell";
+import { SidebarShell, SidebarNavLink, SidebarUserCard } from "@/components/shared/SidebarShell";
 
 const NAV_SECTIONS = [
   {
@@ -52,8 +52,7 @@ const NAV_SECTIONS = [
 
 export function Sidebar() {
   const path = usePathname();
-  const router = useRouter();
-  const { dir, toggleDir, role, sidebarOpen, setSidebarOpen } = useAdmin();
+  const { dir, toggleDir, role, sidebarOpen, setSidebarOpen, sidebarCollapsed, logout } = useAdmin();
   const ar = dir === "rtl";
 
   const FRONTDESK_ROUTES = new Set(["/dashboard", "/bookings", "/fleet", "/kyc-queue", "/late-returns", "/branches", "/roles"]);
@@ -68,16 +67,6 @@ export function Sidebar() {
       brandEn="Maarkbh"
       footer={
         <div className="rounded-lg p-4 flex flex-col gap-3 bg-mk-blue-50">
-          <div className="mk-overline text-mk-blue-700">{ar ? "الدور الحالي" : "Role"}</div>
-          <SidebarRoleSwitcher
-            ar={ar}
-            activeIsFirst
-            firstLabelAr="مالك"
-            firstLabelEn="Owner"
-            secondLabelAr="موظف"
-            secondLabelEn="Front desk"
-            onSelectOther={() => { router.push("/employee/today"); setSidebarOpen(false); }}
-          />
           <SidebarUserCard
             ar={ar}
             initials={{ ar: "عم", en: "AO" }}
@@ -87,6 +76,8 @@ export function Sidebar() {
             sub="Olaya Branch · عر/EN"
             subAr="Olaya Branch · عر/EN"
             onToggleDir={toggleDir}
+            onLogout={logout}
+            collapsed={sidebarCollapsed}
           />
         </div>
       }
@@ -98,7 +89,7 @@ export function Sidebar() {
         if (visibleItems.length === 0) return null;
         return (
           <div key={section.title}>
-            <div className="px-4 pb-2 pt-5 mk-overline text-mk-ink-500">{ar ? section.titleAr : section.title}</div>
+            <div className={`px-4 pb-2 pt-5 mk-overline text-mk-ink-500 ${sidebarCollapsed ? "lg:hidden" : ""}`}>{ar ? section.titleAr : section.title}</div>
             {visibleItems.map((item) => {
               const active = path === item.href || path.startsWith(item.href + "/");
               return (
@@ -113,6 +104,7 @@ export function Sidebar() {
                   active={active}
                   badge={item.badge}
                   onClick={handleNavClick}
+                  collapsed={sidebarCollapsed}
                 />
               );
             })}

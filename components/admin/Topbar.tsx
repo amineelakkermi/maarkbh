@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui";
+import { usePathname, useRouter } from "next/navigation";
 import { TopbarShell } from "@/components/shared/TopbarShell";
+import { SidebarRoleSwitcher } from "@/components/shared/SidebarShell";
 import { useAdmin } from "@/contexts/AdminContext";
 
 const PAGE_META: Record<string, { en: string; ar: string; crumbEn?: string; crumbAr?: string }> = {
@@ -23,6 +22,7 @@ const PAGE_META: Record<string, { en: string; ar: string; crumbEn?: string; crum
 export function Topbar() {
   const { isDark, toggleDark, dir, setSidebarOpen } = useAdmin();
   const path = usePathname();
+  const router = useRouter();
   const ar = dir === "rtl";
   const meta = PAGE_META[path] ?? { en: "Maarkbh", ar: "مركبة" };
 
@@ -41,11 +41,15 @@ export function Topbar() {
         </>
       }
       trailing={
-        <Button variant="primary" className="shadow-[var(--shadow-glow-blue)] hidden sm:flex shrink-0">
-          <Plus size={16} />
-          <span className="hidden md:inline">{ar ? "عقد جديد" : "New contract"}</span>
-          <span className="md:hidden">+</span>
-        </Button>
+        <SidebarRoleSwitcher
+          ar={ar}
+          activeIsFirst
+          firstLabelAr="مالك"
+          firstLabelEn="Owner"
+          secondLabelAr="موظف"
+          secondLabelEn="Front desk"
+          onSelectOther={() => router.push("/employee/today")}
+        />
       }
     />
   );
