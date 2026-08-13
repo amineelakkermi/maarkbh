@@ -621,7 +621,7 @@ export default function LoginPage() {
         variant="centered"
         size="md"
       >
-        <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+        <form onSubmit={handleChangePassword} className="flex flex-col gap-4 p-6">
           <Input
             label={T("Current password", "كلمة المرور الحالية", ar)}
             type="password"
