@@ -2,502 +2,715 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  Search, UserPlus, Ban, Star,
-  Phone, CreditCard, FileText, Loader2, Trash2
+  Search, UserPlus, ChevronRight, CheckCircle, Phone, CreditCard, X, User, FileSignature, Loader2, FileWarning, Plus, Trash2,
 } from "lucide-react";
-import { Avatar, Badge, Input, Select, Button, Tabs, Drawer, DrawerHeader, DrawerFooter, useToast, Modal } from "@/components/ui";
+import { Avatar, Badge, HijriDatePicker, Button, Input, Select, Drawer, DrawerHeader, DrawerFooter, IconButton, Modal, useToast } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
-import { customerService } from "@/lib/api-services";
+import { customerService, attachmentService, countryService, customerEvents } from "@/lib/api-services";
 import { formatPhone, normalizeKycStatus } from "@/lib/formatting";
+import { CLIENTS } from "@/lib/data";
 
 const T = (en: string, ar: string, isAr: boolean) => (isAr ? ar : en);
 
-interface Client {
-  id: number;
+const STATUS_BADGE: Record<string, { variant: "success" | "warning" | "neutral" | "danger"; label: [string, string] }> = {
+  verified: { variant: "success", label: ["Verified", "موثّق"] },
+  pending: { variant: "warning", label: ["Pending KYC", "قيد التحقق"] },
+  rejected: { variant: "danger", label: ["Rejected", "مرفوض"] },
+};
+
+interface ClientContract {
+  id: string;
+  car: string;
+  date: string;
+  status: "active" | "pending" | "completed" | "expired" | "cancelled";
+  rate: number;
+}
+
+interface ClientProfile {
+  id: string;
   name: string;
   nameAr: string;
   phone: string;
+  email?: string;
   idType: string;
   idNumber: string;
+  idExpiryDate?: string;
+  birthDate?: string;
+  hijriBirthDate?: number;
+  nationality?: string;
+  personAddress?: string;
+  idCopyNumber?: string;
+  licenseIssuePlace?: string;
+  borderNumber?: string;
   licenseNumber: string;
+  licenseExpiryDate?: string;
   contracts: number;
   rating: number;
   kycStatus: "verified" | "pending" | "rejected";
+  yakeenStatus?: "verified" | "pending" | "not_verified" | "error";
+  tajeerStatus?: "verified" | "pending" | "not_verified" | "error";
   blacklisted: boolean;
   joinDate: string;
+  history: ClientContract[];
 }
 
+// Verified, has debts, or has disputes are all fine to contract with — only
+// blacklisted or not-yet-verified customers are blocked.
+function canCreateContract(c: ClientProfile) {
+  return !c.blacklisted && c.kycStatus === "verified";
+}
 
-export default function ClientsPage() {
+export default function CustomerListPage() {
   const { dir } = useAdmin();
   const ar = dir === "rtl";
-
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterKyc, setFilterKyc] = useState<"all" | "verified" | "pending" | "blacklisted">("all");
-  const [isDrawerOpen, setDrawerOpen] = useState(false);
+  const router = useRouter();
   const { showToast } = useToast();
 
-  const [nameAr, setNameAr] = useState("");
-  const [nameEn, setNameEn] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [idType, setIdType] = useState("Saudi ID");
-  const [idNumber, setIdNumber] = useState("");
-  const [licenseNumber, setLicenseNumber] = useState("");
+  const [clients, setClients] = useState<ClientProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
 
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  const triggerToast = (msg: string) => showToast(msg);
-
-  // Load customers on mount and when search/filter changes
-  useEffect(() => {
-    loadCustomers();
-  }, [searchQuery, filterKyc]);
-
+  // Load customers from API
   const loadCustomers = async () => {
     try {
-      setLoading(true);
+      setIsLoading(true);
+      setError(null);
+      const response = await customerService.search({ pageNumber: 1, pageSize: 100 });
       
-      // Build search request with filters
-      const searchRequest: any = {
-        search: searchQuery || undefined,
-      };
-      
-      // Apply KYC filter
-      if (filterKyc === "verified") {
-        searchRequest.verificationStatus = "Verified";
-      } else if (filterKyc === "pending") {
-        searchRequest.verificationStatus = "Pending";
-      } else if (filterKyc === "blacklisted") {
-        searchRequest.isBlacklisted = true;
-      }
-      
-      const response = await customerService.search(searchRequest);
-      
-      // Transform API response to match Client interface
-      const transformedClients = (response.items || response.data || []).map((item: any) => ({
-        id: item.id,
-        name: item.name || item.nameEn || '',
-        nameAr: item.nameAr || '',
-        phone: item.phone || '',
-        idType: item.idType || '',
-        idNumber: item.idNumber || '',
-        licenseNumber: item.licenseNumber || '',
-        contracts: item.contracts || 0,
-        rating: item.rating || 0,
-        kycStatus: normalizeKycStatus(item.verificationStatus),
-        blacklisted: item.isBlacklisted || false,
-        joinDate: item.createdAt ? new Date(item.createdAt).toISOString().split('T')[0] : '',
-      }));
+      // Transform API response to ClientProfile format
+      const transformedClients = response.items?.map((item: any) => {
+        const idTypeCode = item.identityType ?? item.idType;
+        const idType = idTypeCode === 1 ? "Saudi ID" : idTypeCode === 2 ? "Iqama" : idTypeCode === 3 ? "Passport" : idTypeCode === 4 ? "GCC ID" : "Unknown";
+        return {
+          id: String(item.id),
+          name: item.fullNameEn || item.name || "",
+          nameAr: item.fullNameAr || item.nameAr || "",
+          phone: item.phoneNumber || "",
+          email: item.email,
+          idType,
+          idNumber: item.beneficiaryIdNumber || item.visitor?.passportNumber || item.visitor?.idNumber || "",
+          idExpiryDate: item.idExpiryDate || item.identityExpiryDate || item.national?.identityExpiryDate || item.residence?.identityExpiryDate || item.visitor?.identityExpiryDate || item.gulf?.identityExpiryDate,
+          birthDate: item.birthDate || item.national?.birthDate || item.residence?.birthDate || item.visitor?.birthDate || item.gulf?.birthDate,
+          hijriBirthDate: item.national?.hijriBirthDate ?? item.residence?.hijriBirthDate,
+          nationality: item.nationality || item.national?.nationality || item.residence?.nationality || item.visitor?.nationality || item.gulf?.nationality,
+          personAddress: item.address,
+          idCopyNumber: item.idCopyNumber || item.identityCopyNumber || item.national?.idCopyNumber || item.residence?.idCopyNumber || item.visitor?.identityCopyNumber || item.gulf?.identityCopyNumber,
+          licenseIssuePlace: item.licenseIssuePlace || item.national?.licenseIssuePlace || item.residence?.licenseIssuePlace || item.visitor?.licenseIssuePlace || item.gulf?.licenseIssuePlace,
+          borderNumber: item.visitor?.borderNumber,
+          licenseNumber: item.licenseNumber || item.national?.licenseNumber || item.residence?.licenseNumber || item.visitor?.licenseNumber || item.gulf?.licenseNumber || "",
+          licenseExpiryDate: item.licenseExpiryDate || item.national?.licenseExpiryDate || item.residence?.licenseExpiryDate || item.visitor?.licenseExpiryDate || item.gulf?.licenseExpiryDate,
+          contracts: item.contracts || 0,
+          rating: item.rating || 0,
+          kycStatus: normalizeKycStatus(item.verificationStatus),
+          yakeenStatus: item.yakeenStatus === 1 ? "verified" : item.yakeenStatus === 2 ? "pending" : "not_verified",
+          blacklisted: item.isBlacklisted || false,
+          joinDate: (item.joinedAt || item.creationTime) ? new Date(item.joinedAt || item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          history: [],
+          debts: [],
+        };
+      }) || [];
       
       setClients(transformedClients);
-    } catch (error) {
-      console.error('Error loading customers:', error);
-      triggerToast(T('Failed to load customers', 'فشل تحميل العملاء', ar));
+    } catch (err) {
+      console.error("Error loading customers:", err);
+      // Fall back to mock data if API fails
+      console.log("Falling back to mock data");
+      setClients(CLIENTS);
+      setError(null); // Don't show error, just use mock data
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setNameAr("");
-    setNameEn("");
-    setPhone("");
-    setEmail("");
-    setIdType("Saudi ID");
-    setIdNumber("");
-    setLicenseNumber("");
-    setFormErrors({});
+  useEffect(() => {
+    loadCustomers();
+    const unsubscribe = customerEvents.onReload(loadCustomers);
+    return () => unsubscribe();
+  }, []);
+
+  // Add customer form state
+  const [newName, setNewName] = useState("");
+  const [newNameAr, setNewNameAr] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newIdType, setNewIdType] = useState<"Saudi ID" | "Iqama" | "Passport" | "GCC ID">("Saudi ID");
+  const [newId, setNewId] = useState("");
+  const [newNationality, setNewNationality] = useState("Saudi");
+  const [newIdExpiry, setNewIdExpiry] = useState("");
+  const [newBirthDate, setNewBirthDate] = useState("");
+  const [newHijriBirthDate, setNewHijriBirthDate] = useState("");
+  const [newLicense, setNewLicense] = useState("");
+  const [newLicenseExpiry, setNewLicenseExpiry] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newAddress, setNewAddress] = useState("");
+  const [newIdCopyNumber, setNewIdCopyNumber] = useState("");
+  const [newLicenseIssuePlace, setNewLicenseIssuePlace] = useState("");
+  const [newBorderNumber, setNewBorderNumber] = useState("");
+  const [added, setAdded] = useState(false);
+
+  // Countries selection (for Visitor type)
+  const [countries, setCountries] = useState<{ id: number; name: string; nameAr?: string; nameEn?: string }[]>([]);
+  const [newCountryId, setNewCountryId] = useState<string>("");
+
+  const [documentTypes, setDocumentTypes] = useState<any[]>([]);
+  const [newDocuments, setNewDocuments] = useState<{ documentType: number; file: File | null }[]>([]);
+  const [uploadingDocuments, setUploadingDocuments] = useState(false);
+
+  // Delete customer state
+  const [customerToDelete, setCustomerToDelete] = useState<ClientProfile | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    customerService
+      .getDocumentTypes()
+      .then((res: any) => {
+        const list = res?.data ?? res?.items ?? res ?? [];
+        setDocumentTypes(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setDocumentTypes([]));
+
+    countryService
+      .search({ pageNumber: 1, pageSize: 200 })
+      .then((res: any) => {
+        const list = res?.data?.items ?? res?.items ?? res?.data ?? res ?? [];
+        const normalized = Array.isArray(list) ? list.map((c: any) => ({
+          id: c.id,
+          name: c.nameAr || c.nameEn || c.name || "",
+          nameAr: c.nameAr,
+          nameEn: c.nameEn,
+        })) : [];
+        setCountries(normalized);
+      })
+      .catch(() => setCountries([]));
+  }, []);
+
+  const addDocumentRow = () => {
+    setNewDocuments((prev) => [...prev, { documentType: documentTypes[0]?.id ?? documentTypes[0]?.value ?? 1, file: null }]);
+  };
+  const updateDocumentRow = (index: number, patch: Partial<{ documentType: number; file: File | null }>) => {
+    setNewDocuments((prev) => prev.map((d, i) => (i === index ? { ...d, ...patch } : d)));
+  };
+  const removeDocumentRow = (index: number) => {
+    setNewDocuments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleCloseDrawer = () => {
-    setDrawerOpen(false);
-    resetForm();
+  // Required field set per identity type — mirrors the new-contract flow's
+  // per-type identity form so registering a customer uses the exact same fields.
+  type IdentityFieldDef = {
+    key: string; labelEn: string; labelAr: string; required: boolean;
+    type: "text" | "date" | "email" | "hijri"; value: string; onChange: (v: string) => void;
   };
+  function newCustomerIdentityFields(): IdentityFieldDef[] {
+    const addressField: IdentityFieldDef = { key: "address", labelEn: "Address", labelAr: "العنوان", required: true, type: "text", value: newAddress, onChange: setNewAddress };
+    const idCopyNumberField: IdentityFieldDef = { key: "idCopyNumber", labelEn: "ID Copy No.", labelAr: "رقم نسخة الهوية", required: true, type: "text", value: newIdCopyNumber, onChange: setNewIdCopyNumber };
 
-  const validateForm = () => {
-    const errors: Record<string, string> = {};
-
-    if (!nameAr.trim()) {
-      errors.nameAr = T("Arabic name is required", "الاسم بالعربية مطلوب", ar);
-    }
-    if (!nameEn.trim()) {
-      errors.nameEn = T("English name is required", "الاسم بالإنجليزية مطلوب", ar);
-    }
-    if (!phone.trim()) {
-      errors.phone = T("Mobile number is required", "رقم الجوال مطلوب", ar);
-    } else if (!/^\+?\d[\d\s\-]{7,}$/.test(phone.trim())) {
-      errors.phone = T("Enter a valid mobile number", "أدخل رقم جوال صحيح", ar);
-    }
-    if (!email.trim()) {
-      errors.email = T("Email is required", "البريد الإلكتروني مطلوب", ar);
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      errors.email = T("Enter a valid email address", "أدخل بريد إلكتروني صحيح", ar);
-    }
-    if (!idNumber.trim()) {
-      errors.idNumber = T("ID number is required", "رقم الهوية مطلوب", ar);
-    }
-
-    return errors;
-  };
-
-  const mapApiErrorToFields = (error: any): Record<string, string> => {
-    const errors: Record<string, string> = {};
-    const message = error?.message || error?.error || String(error);
-    const lower = message.toLowerCase();
-
-    if (lower.includes("email")) errors.email = message;
-    else if (lower.includes("phone") || lower.includes("phonenumber")) errors.phone = message;
-    else if (lower.includes("fullnameen") || lower.includes("english name")) errors.nameEn = message;
-    else if (lower.includes("fullnamesar") || lower.includes("arabic name")) errors.nameAr = message;
-    else if (lower.includes("idnumber") || lower.includes("identity")) errors.idNumber = message;
-
-    return errors;
-  };
-
-  const handleCreateClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormErrors({});
-
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setFormErrors(validationErrors);
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const normalizedPhone = phone.trim().startsWith("+") ? phone.trim() : `+966 ${phone.trim()}`;
-
-      await customerService.create({
-        fullNameEn: nameEn.trim(),
-        fullNameAr: nameAr.trim(),
-        phoneNumber: normalizedPhone,
-        email: email.trim(),
-        identityType: idType as any,
-      });
-
-      await loadCustomers();
-      handleCloseDrawer();
-      triggerToast(T("Client created successfully", "تم إضافة العميل الجديد بنجاح", ar));
-    } catch (error: any) {
-      console.error('Error creating client:', error);
-      const apiErrors = mapApiErrorToFields(error);
-      if (Object.keys(apiErrors).length > 0) {
-        setFormErrors(apiErrors);
-      } else {
-        triggerToast(error?.message || error?.error || T('Failed to create client', 'فشل إنشاء العميل', ar));
+    if (newIdType === "Saudi ID" || newIdType === "Iqama") {
+      const fields: IdentityFieldDef[] = [
+        { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: newId, onChange: setNewId },
+        addressField,
+        { key: "birthDate", labelEn: newIdType === "Saudi ID" ? "Date of Birth (Hijri)" : "Date of Birth", labelAr: newIdType === "Saudi ID" ? "تاريخ الميلاد (هجري)" : "تاريخ الميلاد", required: true, type: newIdType === "Saudi ID" ? "hijri" : "date", value: newIdType === "Saudi ID" ? newHijriBirthDate : newBirthDate, onChange: newIdType === "Saudi ID" ? setNewHijriBirthDate : setNewBirthDate },
+      ];
+      if (newIdType === "Saudi ID") {
+        fields.push({ key: "birthDateGregorian", labelEn: "Date of Birth (Gregorian, optional)", labelAr: "تاريخ الميلاد (ميلادي، اختياري)", required: false, type: "date", value: newBirthDate, onChange: setNewBirthDate });
       }
-    } finally {
-      setIsSubmitting(false);
+      return fields;
     }
-  };
+    if (newIdType === "GCC ID") {
+      return [
+        { key: "idNumber", labelEn: "Beneficiary ID No.", labelAr: "رقم هوية المستفيد", required: true, type: "text", value: newId, onChange: setNewId },
+        addressField,
+        { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: newBirthDate, onChange: setNewBirthDate },
+        { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: newLicense, onChange: setNewLicense },
+        { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: newIdExpiry, onChange: setNewIdExpiry },
+        { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: newLicenseIssuePlace, onChange: setNewLicenseIssuePlace },
+        idCopyNumberField,
+        { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: newLicenseExpiry, onChange: setNewLicenseExpiry },
+      ];
+    }
+    // Passport / Visitor — no "Beneficiary ID No." field; identity is border/passport number instead
+    return [
+      addressField,
+      { key: "borderNumber", labelEn: "Border No.", labelAr: "رقم الحدود", required: true, type: "text", value: newBorderNumber, onChange: setNewBorderNumber },
+      { key: "passportNumber", labelEn: "Passport No.", labelAr: "رقم الجواز", required: true, type: "text", value: newId, onChange: setNewId },
+      { key: "birthDate", labelEn: "Date of Birth", labelAr: "تاريخ الميلاد", required: true, type: "date", value: newBirthDate, onChange: setNewBirthDate },
+      { key: "licenseNumber", labelEn: "License No.", labelAr: "رقم الرخصة", required: true, type: "text", value: newLicense, onChange: setNewLicense },
+      { key: "licenseExpiry", labelEn: "License Expiry Date", labelAr: "تاريخ انتهاء الرخصة", required: true, type: "date", value: newLicenseExpiry, onChange: setNewLicenseExpiry },
+      { key: "licenseIssuePlace", labelEn: "License Issue Place", labelAr: "مكان إصدار الرخصة", required: true, type: "text", value: newLicenseIssuePlace, onChange: setNewLicenseIssuePlace },
+      idCopyNumberField,
+      { key: "idExpiry", labelEn: "ID Expiry Date", labelAr: "تاريخ انتهاء الهوية", required: true, type: "date", value: newIdExpiry, onChange: setNewIdExpiry },
+    ];
+  }
 
-  const openDeleteModal = (client: Client) => {
-    setClientToDelete(client);
-    setDeleteModalOpen(true);
-  };
+  const filtered = clients.filter((c) => {
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.nameAr.includes(q) ||
+      c.phone.includes(q) ||
+      c.idNumber.includes(q)
+    );
+  });
 
-  const closeDeleteModal = () => {
-    setDeleteModalOpen(false);
-    setClientToDelete(null);
-  };
+  function isCustomerFormInvalid() {
+    if (!newNameAr || !newName || !newPhone) return true;
+    if ((newIdType === "Passport" || newIdType === "GCC ID") && !newCountryId) return true;
+    return newCustomerIdentityFields().some((f) => f.required && !f.value);
+  }
 
-  const handleDeleteClient = async () => {
-    if (!clientToDelete) return;
-    setIsDeleting(true);
+  async function handleAdd() {
+    if (isCustomerFormInvalid()) return;
+
     try {
-      await customerService.delete(clientToDelete.id);
-      triggerToast(T("Client deleted successfully", "تم حذف العميل بنجاح", ar));
+      setAdded(true);
+
+      // Upload any attached documents first and collect their file IDs
+      setUploadingDocuments(true);
+      const uploadedDocuments: { documentType: number; fileId: number; sortOrder: number }[] = [];
+      for (let i = 0; i < newDocuments.length; i++) {
+        const doc = newDocuments[i];
+        if (!doc.file) continue;
+        const uploadResult = await attachmentService.upload(doc.file);
+        const fileId = uploadResult?.data?.id ?? uploadResult?.id ?? uploadResult?.fileId ?? uploadResult?.data?.fileId;
+        if (typeof fileId === "number") {
+          uploadedDocuments.push({ documentType: doc.documentType, fileId, sortOrder: i + 1 });
+        }
+      }
+      setUploadingDocuments(false);
+
+      // Map ID type to enum
+      const identityTypeMap: Record<string, number> = {
+        "Saudi ID": 1,
+        "Iqama": 2,
+        "Passport": 3,
+        "GCC ID": 4,
+      };
+      
+      const createRequest = {
+        fullNameEn: newName,
+        fullNameAr: newNameAr,
+        phoneNumber: newPhone.startsWith("+966") || newPhone.startsWith("+") ? newPhone : `+966 ${newPhone}`,
+        email: newEmail || undefined,
+        identityType: identityTypeMap[newIdType],
+        address: newAddress || undefined,
+        national: newIdType === "Saudi ID" ? {
+          beneficiaryIdNumber: newId,
+          birthDate: newBirthDate || undefined,
+          hijriBirthDate: newHijriBirthDate ? parseInt(newHijriBirthDate, 10) : undefined,
+          isHijriBirthDate: !newBirthDate,
+          email: newEmail || undefined,
+        } : undefined,
+        residence: newIdType === "Iqama" ? {
+          beneficiaryIdNumber: newId,
+          birthDate: newBirthDate || undefined,
+          isHijriBirthDate: false,
+          email: newEmail || undefined,
+        } : undefined,
+        visitor: newIdType === "Passport" ? {
+          passportNumber: newId,
+          borderNumber: newBorderNumber || undefined,
+          birthDate: newBirthDate || undefined,
+          email: newEmail || undefined,
+          licenseNumber: newLicense || undefined,
+          licenseExpiryDate: newLicenseExpiry || undefined,
+          licenseIssuePlace: newLicenseIssuePlace || undefined,
+          countryId: newCountryId ? Number(newCountryId) : 1,
+          identityExpiryDate: newIdExpiry || undefined,
+          identityCopyNumber: newIdCopyNumber || undefined,
+        } : undefined,
+        gulf: newIdType === "GCC ID" ? {
+          beneficiaryIdNumber: newId,
+          email: newEmail || undefined,
+          birthDate: newBirthDate || undefined,
+          licenseNumber: newLicense || undefined,
+          licenseExpiryDate: newLicenseExpiry || undefined,
+          licenseIssuePlace: newLicenseIssuePlace || undefined,
+          countryId: newCountryId ? Number(newCountryId) : 1,
+          identityCopyNumber: newIdCopyNumber || undefined,
+          identityExpiryDate: newIdExpiry || undefined,
+        } : undefined,
+        documents: uploadedDocuments.length > 0 ? uploadedDocuments : undefined,
+      };
+
+      await customerService.create(createRequest as any);
+      
+      // Reload customers after creation
       await loadCustomers();
-      closeDeleteModal();
-    } catch (error: any) {
-      console.error('Error deleting client:', error);
-      triggerToast(error?.message || error?.error || T('Failed to delete client', 'فشل حذف العميل', ar));
+      customerEvents.reload();
+      
+      setShowAdd(false);
+      setAdded(false);
+      setNewName(""); setNewNameAr(""); setNewPhone(""); setNewIdType("Saudi ID"); setNewId("");
+      setNewNationality("Saudi"); setNewIdExpiry(""); setNewBirthDate(""); setNewHijriBirthDate("");
+      setNewLicense(""); setNewLicenseExpiry(""); setNewEmail(""); setNewAddress("");
+      setNewIdCopyNumber(""); setNewLicenseIssuePlace(""); setNewBorderNumber(""); setNewCountryId("");
+      setNewDocuments([]);
+      
+      showToast(T("🟢 Customer added successfully!", "🟢 تم إضافة العميل بنجاح!", ar));
+    } catch (err) {
+      console.error("Error creating customer:", err);
+      setAdded(false);
+      setUploadingDocuments(false);
+      showToast(T("Failed to add customer", "فشل في إضافة العميل", ar));
+    }
+  }
+
+  async function handleDeleteCustomer() {
+    if (!customerToDelete) return;
+    try {
+      setIsDeleting(true);
+      await customerService.delete(Number(customerToDelete.id));
+      showToast(T("Customer deleted successfully", "تم حذف العميل بنجاح", ar));
+      await loadCustomers();
+      customerEvents.reload();
+    } catch (err) {
+      console.error("Error deleting customer:", err);
+      showToast(T("Failed to delete customer", "فشل في حذف العميل", ar));
     } finally {
       setIsDeleting(false);
+      setCustomerToDelete(null);
     }
-  };
-
-  const toggleBlacklist = async (id: number) => {
-    const client = clients.find(c => c.id === id);
-    if (!client) return;
-    
-    try {
-      if (client.blacklisted) {
-        await customerService.removeFromBlacklist(id);
-        triggerToast(T("✅ Client removed from blacklist.", "✅ تم إزالة العميل من القائمة السوداء.", ar));
-      } else {
-        await customerService.addToBlacklist(id, { reason: 'Admin action' });
-        triggerToast(T("🚫 Client blacklisted!", "🚫 تم إدراج العميل في القائمة السوداء!", ar));
-      }
-      // Reload to get updated status
-      await loadCustomers();
-    } catch (error) {
-      console.error('Error toggling blacklist:', error);
-      triggerToast(T('Failed to update blacklist status', 'فشل تحديث حالة القائمة السوداء', ar));
-    }
-  };
-
-  const handleVerifyKyc = async (id: number) => {
-    try {
-      await customerService.verify(id);
-      triggerToast(T("✓ KYC verified for client", "✓ تم توثيق هوية العميل بنجاح", ar));
-      // Reload to get updated status
-      await loadCustomers();
-    } catch (error) {
-      console.error('Error verifying KYC:', error);
-      triggerToast(T('Failed to verify KYC', 'فشل توثيق الهوية', ar));
-    }
-  };
-
-  const filteredClients = clients;
+  }
 
   return (
-    <div className="relative">
-      {/* Action Header */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-6">
-        <div className="w-full md:max-w-md">
+    <div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="flex-1 max-w-[400px]">
           <Input
             variant="search"
-            icon={<Search size={16} />}
-            placeholder={T("Search client by name, phone, or ID…", "ابحث عن عميل بالاسم، الجوال، أو الهوية…", ar)}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            icon={<Search size={14} />}
+            placeholder={T("Search name, phone, or ID…", "ابحث بالاسم أو الهاتف أو رقم الهوية…", ar)}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            suffix={
+              search && (
+                <IconButton size="sm" variant="ghost" onClick={() => setSearch("")}>
+                  <X size={13} />
+                </IconButton>
+              )
+            }
           />
         </div>
-        <Button variant="primary" onClick={() => setDrawerOpen(true)} className="shadow-[var(--shadow-glow-blue)]">
-          <UserPlus size={16} />
-          {T("Add New Client", "إضافة عميل جديد", ar)}
+        <div className="flex-1" />
+        <Button variant="primary" onClick={() => setShowAdd(true)} className="shadow-[var(--shadow-glow-blue)]">
+          <UserPlus size={15} />
+          {T("Add customer", "إضافة عميل جديد", ar)}
         </Button>
       </div>
 
-      {/* Filter Tabs */}
-      <Tabs
-        variant="default"
-        rounded="full"
-        className="mb-6 w-fit"
-        value={filterKyc}
-        onChange={(v) => setFilterKyc(v as typeof filterKyc)}
-        items={[
-          { value: "all", label: "All Clients", labelAr: "جميع العملاء" },
-          { value: "verified", label: "KYC Verified", labelAr: "الهويات الموثّقة" },
-          { value: "pending", label: "KYC Pending", labelAr: "الهويات المعلقة" },
-          { value: "blacklisted", label: "Blacklisted", labelAr: "القائمة السوداء" },
-        ].map((tab) => ({ value: tab.value, label: ar ? tab.labelAr : tab.label }))}
-      />
-
-      {/* Clients */}
-      <div className="flex flex-col gap-3">
-        {loading ? (
-          <div className="flex items-center justify-center py-12 rounded-xl mk-surface">
-            <Loader2 className="animate-spin text-mk-blue-500" size={32} />
+      {/* Stats row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {[
+          { label: T("Total customers", "إجمالي العملاء", ar), value: clients.length, color: "var(--color-mk-blue-500)" },
+          { label: T("Verified", "موثّقون", ar), value: clients.filter((c) => c.kycStatus === "verified").length, color: "var(--color-mk-mint-500)" },
+          { label: T("Pending KYC", "قيد التحقق", ar), value: clients.filter((c) => c.kycStatus === "pending").length, color: "var(--color-mk-warning)" },
+          { label: T("Blacklisted", "القائمة السوداء", ar), value: clients.filter((c) => c.blacklisted).length, color: "var(--color-mk-danger)" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="rounded-lg px-5 py-4 mk-surface">
+            <div className="mk-h2" style={{ color }}>{value}</div>
+            <div className="mk-caption mt-1 text-mk-ink-500">{label}</div>
           </div>
-        ) : filteredClients.length === 0 ? (
-          <div className="text-center py-12 rounded-xl mk-surface">
-            <span className="mk-display opacity-25">👥</span>
-            <div className="mk-body-sm mt-3 text-mk-ink-500">
-              {T("No clients found matching criteria", "لا يوجد عملاء مطابقتهم لشروط البحث", ar)}
-            </div>
+        ))}
+      </div>
+
+      {/* Customers table */}
+      <div className="rounded-xl overflow-hidden mk-surface">
+        <div
+          className="grid px-5 py-3 mk-overline uppercase text-mk-ink-400 tracking-wider border-b border-mk-ink-100 bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_40px_36px]"
+        >
+          <span>{T("Customer", "العميل", ar)}</span>
+          <span>{T("Phone", "الهاتف", ar)}</span>
+          <span>{T("National ID", "الهوية", ar)}</span>
+          <span>{T("Contracts", "العقود", ar)}</span>
+          <span>{T("Status", "الحالة", ar)}</span>
+          <span />
+          <span />
+          <span />
+        </div>
+
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-14 gap-3 text-mk-ink-400">
+            <Loader2 size={32} className="animate-spin" />
+            <span className="mk-label">{T("Loading customers...", "جاري تحميل العملاء...", ar)}</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-14 gap-3 text-mk-danger">
+            <FileWarning size={32} strokeWidth={1.5} />
+            <span className="mk-label">{error}</span>
+            <Button variant="outline" size="sm" onClick={loadCustomers}>
+              {T("Retry", "إعادة المحاولة", ar)}
+            </Button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 gap-3 text-mk-ink-400">
+            <User size={32} strokeWidth={1.5} />
+            <span className="mk-label">{T("No customers found", "لا يوجد عملاء مطابقون", ar)}</span>
           </div>
         ) : (
-          filteredClients.map((client) => (
+          filtered.map((c, idx) => {
+          const sm = STATUS_BADGE[c.kycStatus];
+          return (
             <div
-              key={client.id}
-              className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-xl mk-surface cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50"
-              style={{ borderInlineStart: client.blacklisted ? "4px solid var(--color-mk-danger)" : undefined }}
+              key={c.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => router.push(`/customers/${c.id}`)}
+              onKeyDown={(e) => { if (e.key === "Enter") router.push(`/customers/${c.id}`); }}
+              className="grid items-center px-5 py-4 cursor-pointer transition-[background-color] duration-[var(--duration-fast)] ease-[var(--ease-standard)] hover:bg-mk-ink-50 grid-cols-[2.2fr_1.2fr_1.4fr_0.7fr_0.7fr_40px_40px_36px]"
+              style={{
+                borderBottom: idx < filtered.length - 1 ? "1px solid var(--color-mk-border)" : "none",
+                borderInlineStart: c.blacklisted ? "3px solid var(--color-mk-danger)" : "none",
+              }}
             >
-              {/* Profile details */}
-              <div className="flex items-center gap-4 min-w-0">
-                <Avatar
-                  name={ar ? client.nameAr : client.name}
-                  size="lg"
-                  className={client.blacklisted ? "grayscale opacity-50" : ""}
-                />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="mk-body text-mk-ink-900">
-                      {ar ? client.nameAr : client.name}
-                    </div>
-                    {client.blacklisted ? (
-                      <Badge variant="danger" dot>{T("Blacklisted", "قائمة سوداء", ar)}</Badge>
-                    ) : client.kycStatus === "verified" ? (
-                      <Badge variant="success" dot>{T("KYC Verified", "موثّق", ar)}</Badge>
-                    ) : (
-                      <Badge variant="warning" dot>{T("KYC Pending", "تحقق معلق", ar)}</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3 mk-caption mt-2 flex-wrap text-mk-ink-500">
-                    <span className="flex items-center gap-1"><Phone size={12} /> <span dir="ltr" className="inline-block whitespace-nowrap" style={{ unicodeBidi: "embed" }}>{formatPhone(client.phone)}</span></span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1"><CreditCard size={12} /> {client.idType} : {client.idNumber}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1"><FileText size={12} /> {T(`Lic: ${client.licenseNumber}`, `رخصة: ${client.licenseNumber}`, ar)}</span>
-                  </div>
-                  <div className="flex items-center gap-4 mk-caption mt-2 text-mk-ink-400">
-                    <span>{T(`Joined: ${client.joinDate}`, `تاريخ الانضمام: ${client.joinDate}`, ar)}</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 mk-label text-mk-ink-900">
-                      {T(`${client.contracts} contracts`, `${client.contracts} عقود سابقة`, ar)}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 mk-label text-mk-warning">
-                      <Star size={12} className="fill-current" /> {client.rating}
-                    </span>
+              {/* Name + avatar */}
+              <div className="flex items-center gap-3">
+                <Avatar name={c.name} size="sm" />
+                <div>
+                  <div className="mk-body text-mk-ink-900 flex items-center gap-2 flex-wrap">
+                    <span>{ar ? c.nameAr : c.name}</span>
                   </div>
                 </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 shrink-0 justify-end border-t md:border-t-0 pt-3 md:pt-0 border-mk-ink-100">
-                {client.kycStatus === "pending" && !client.blacklisted && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleVerifyKyc(client.id)}
-                    className="border-mk-mint-600/20 bg-mk-mint-600/10 text-mk-mint-600 hover:border-mk-mint-600/40"
+              {/* Phone */}
+              <div className="flex items-center gap-2 mk-label text-mk-ink-600">
+                <Phone size={12} className="text-mk-ink-400" />
+                <span dir="ltr" className="inline-block whitespace-nowrap" style={{ unicodeBidi: "embed" }}>
+                  {formatPhone(c.phone)}
+                </span>
+              </div>
+              {/* ID */}
+              <div>
+                <div className="flex items-center gap-2 mk-label text-mk-ink-600">
+                  <CreditCard size={12} className="text-mk-ink-400" />
+                  {c.idNumber}
+                </div>
+                <div className="mk-overline text-mk-ink-400 ms-5 flex items-center gap-1 mt-1">
+                  <span>{ar ? (c.idType === "Saudi ID" ? "هوية وطنية" : c.idType === "Iqama" ? "إقامة" : c.idType === "Passport" ? "زائر" : "خليجية") : (c.idType === "Passport" ? "Visitor" : c.idType)}</span>
+                  {c.idExpiryDate && <span>· {c.idExpiryDate}</span>}
+                </div>
+              </div>
+              {/* Contracts */}
+              <div className="mk-label text-mk-ink-900">
+                {c.contracts > 0 ? c.contracts : <span className="text-mk-ink-400">{T("None", "لا يوجد", ar)}</span>}
+              </div>
+              {/* Status */}
+              <div>
+                <Badge variant={c.blacklisted ? "danger" : STATUS_BADGE[c.kycStatus]?.variant ?? "neutral"} dot>
+                  {c.blacklisted ? T("Blacklisted", "قائمة سوداء", ar) : T(sm?.label[0] ?? "", sm?.label[1] ?? "", ar)}
+                </Badge>
+              </div>
+              {/* Create contract */}
+              <div className="flex justify-center">
+                {canCreateContract(c) && (
+                  <Link
+                    href={`/employee/new-contract?clientId=${c.id}`}
+                    title={T("Create contract", "إنشاء عقد", ar)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex items-center justify-center w-7 h-7 rounded-full bg-mk-blue-500 text-white no-underline shrink-0"
                   >
-                    {T("Verify KYC", "توثيق الهوية", ar)}
-                  </Button>
+                    <FileSignature size={13} />
+                  </Link>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleBlacklist(client.id)}
-                  className={client.blacklisted
-                    ? "border-mk-mint-600/20 bg-mk-mint-600/10 text-mk-mint-600"
-                    : "border-mk-danger/20 bg-mk-danger/8 text-mk-danger"}
+              </div>
+              {/* Delete */}
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  title={T("Delete customer", "حذف العميل", ar)}
+                  onClick={(e) => { e.stopPropagation(); setCustomerToDelete(c); }}
+                  className="flex items-center justify-center w-7 h-7 rounded-full bg-mk-danger/10 text-mk-danger hover:bg-mk-danger/20 transition-colors"
                 >
-                  {client.blacklisted ? T("Remove restriction", "إلغاء الحظر", ar) : T("Blacklist", "إدراج بالحظر", ar)}
-                </Button>
-                <Link href={`/employee/customer/${client.id}`}>
-                  <Button variant="outline" size="sm">{T("View Profile", "عرض الملف", ar)}</Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openDeleteModal(client)}
-                  className="border-mk-danger/20 bg-mk-danger/8 text-mk-danger hover:bg-mk-danger/15"
-                >
-                  <Trash2 size={14} />
-                  {T("Delete", "حذف", ar)}
-                </Button>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+              {/* Arrow */}
+              <div className="flex justify-end">
+                <ChevronRight size={16} className="text-mk-ink-300" />
               </div>
             </div>
-          ))
+          );
+        })
         )}
       </div>
 
-      {/* Drawer */}
-      <Drawer open={isDrawerOpen} onClose={() => setDrawerOpen(false)}>
-        <div className="flex flex-col gap-5 justify-between h-full max-w-[480px]">
+      {/* ── DRAWER: Register new customer ───────────────────────── */}
+      <Drawer open={showAdd} onClose={() => setShowAdd(false)}>
+        <div className="flex flex-col justify-between h-full max-w-[480px] overflow-y-auto">
           <div>
-            <DrawerHeader title={T("Add New Client Profile", "إضافة ملف عميل جديد", ar)} onClose={() => setDrawerOpen(false)} className="mb-0 pb-4 border-b border-mk-ink-100" />
+            <DrawerHeader title={T("Add new customer", "إضافة عميل جديد", ar)} onClose={() => setShowAdd(false)} className="mb-0 pb-4 border-b border-mk-border" />
 
-              <form onSubmit={handleCreateClient} className="flex flex-col gap-4 mt-5">
-                <Input
-                  label={T("Arabic Full Name *", "الاسم الكامل بالعربية *", ar)}
-                  placeholder={T("e.g. خالد المطيري", "مثال: خالد المطيري", ar)}
-                  value={nameAr}
-                  onChange={(e) => setNameAr(e.target.value)}
-                  error={formErrors.nameAr}
-                />
-                <Input
-                  label={T("English Full Name *", "الاسم الكامل بالإنجليزية *", ar)}
-                  placeholder="e.g. Khaled Al-Mutairi"
-                  value={nameEn}
-                  onChange={(e) => setNameEn(e.target.value)}
-                  error={formErrors.nameEn}
-                />
-                <Input
-                  variant="muted"
-                  type="tel"
-                  className="font-mono"
-                  label={<>{T("Mobile Number", "رقم الجوال", ar)} <span className="text-mk-danger">*</span></>}
-                  placeholder="e.g. +966 50 123 4567"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  error={formErrors.phone}
-                />
-                <Input
-                  type="email"
-                  label={<>{T("Email", "البريد الإلكتروني", ar)} <span className="text-mk-danger">*</span></>}
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  error={formErrors.email}
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <Select
-                    label={T("ID Type", "نوع الهوية", ar)}
-                    value={idType}
-                    onChange={(e) => setIdType(e.target.value)}
-                  >
-                    <option value="Saudi ID">{T("National ID", "هوية وطنية", ar)}</option>
-                    <option value="Iqama">{T("Iqama", "إقامة", ar)}</option>
-                    <option value="Passport">{T("Passport", "جواز سفر", ar)}</option>
-                  </Select>
-                  <Input
-                    label={T("ID Number *", "رقم الهوية *", ar)}
-                    placeholder="1077654321"
-                    value={idNumber}
-                    onChange={(e) => setIdNumber(e.target.value)}
-                    error={formErrors.idNumber}
-                  />
-                </div>
-                <Input
-                  label={T("Driver's License Number", "رقم رخصة القيادة", ar)}
-                  placeholder="LIC-99824"
-                  value={licenseNumber}
-                  onChange={(e) => setLicenseNumber(e.target.value)}
-                />
-              </form>
-            </div>
+            <div className="flex flex-col gap-4 mt-5">
+              <Input
+                variant="muted"
+                dir="rtl"
+                label={<>{T("Full name (Arabic)", "الاسم الكامل (عربي)", ar)} <span className="text-mk-danger">*</span></>}
+                placeholder="مثال: أحمد المطيري"
+                value={newNameAr}
+                onChange={(e) => setNewNameAr(e.target.value)}
+              />
+              <Input
+                variant="muted"
+                label={<>{T("Full name (English)", "الاسم الكامل (إنجليزي)", ar)} <span className="text-mk-danger">*</span></>}
+                placeholder="e.g. Ahmed Al-Mutairi"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+              <Input
+                variant="muted"
+                type="tel"
+                className="font-mono"
+                label={<>{T("Phone number", "رقم الهاتف", ar)} <span className="text-mk-danger">*</span></>}
+                placeholder="e.g. +966 50 123 4567"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+              />
 
-            <DrawerFooter className="mt-0 pt-4 border-t border-mk-ink-100 justify-stretch">
-              <Button variant="outline" onClick={handleCloseDrawer} disabled={isSubmitting}>
-                {T("Cancel", "إلغاء", ar)}
-              </Button>
-              <Button variant="primary" onClick={handleCreateClient} disabled={isSubmitting} className="flex-1 shadow-[var(--shadow-glow-blue)]">
-                {isSubmitting ? (
-                  <><Loader2 size={14} className="animate-spin" /> {T("Creating...", "جارٍ الإنشاء...", ar)}</>
+              <Input
+                variant="muted"
+                type="email"
+                label={T("Email", "البريد الإلكتروني", ar)}
+                placeholder="example@email.com"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+              />
+
+              <div className="flex flex-col gap-2">
+                <label className="mk-caption text-mk-ink-700">{T("ID Type", "نوع الهوية", ar)}</label>
+                <Select
+                  value={newIdType}
+                  onChange={(e) => {
+                    const v = e.target.value as any;
+                    setNewIdType(v);
+                    if (v === "Saudi ID") setNewNationality("Saudi");
+                  }}
+                >
+                  <option value="Saudi ID">{T("National ID", "هوية وطنية", ar)}</option>
+                  <option value="Iqama">{T("Iqama", "إقامة", ar)}</option>
+                  <option value="Passport">{T("Visitor", "زائر", ar)}</option>
+                  <option value="GCC ID">{T("GCC ID", "هوية خليجية", ar)}</option>
+                </Select>
+              </div>
+
+              {/* Dynamic identity fields — depends on ID Type, matches the new-contract flow exactly */}
+              {newCustomerIdentityFields().map((f) => (
+                f.type === "hijri" ? (
+                  <div key={f.key} className="flex flex-col gap-2">
+                    <label className="mk-caption text-mk-ink-700">
+                      {T(f.labelEn, f.labelAr, ar)} {f.required && <span className="text-mk-danger">*</span>}
+                    </label>
+                    <HijriDatePicker value={f.value} onChange={f.onChange} ar={ar} />
+                  </div>
                 ) : (
-                  <>{T("Create Client", "حفظ العميل", ar)}</>
-                )}
-              </Button>
-            </DrawerFooter>
+                  <Input
+                    key={f.key}
+                    variant="muted"
+                    className="font-mono"
+                    type={f.type}
+                    label={<>{T(f.labelEn, f.labelAr, ar)} {f.required && <span className="text-mk-danger">*</span>}</>}
+                    value={f.value}
+                    onChange={(e) => f.onChange(e.target.value)}
+                  />
+                )
+              ))}
+
+              {/* Country selection for Visitor only */}
+              {(newIdType === "Passport" || newIdType === "GCC ID") && (
+                <div className="flex flex-col gap-2">
+                  <label className="mk-caption text-mk-ink-700">
+                    {T("Country", "الدولة", ar)} <span className="text-mk-danger">*</span>
+                  </label>
+                  <Select value={newCountryId} onChange={(e) => setNewCountryId(e.target.value)}>
+                    <option value="">{T("Select country...", "اختر الدولة...", ar)}</option>
+                    {countries.map((country) => (
+                      <option key={country.id} value={String(country.id)}>
+                        {ar ? country.nameAr || country.name : country.nameEn || country.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+
+              {/* Documents (optional) */}
+              <div className="flex flex-col gap-3 pt-2 border-t border-mk-border">
+                <div className="flex items-center justify-between">
+                  <label className="mk-caption text-mk-ink-700">{T("Documents (optional)", "المستندات (اختياري)", ar)}</label>
+                  <Button variant="outline" size="sm" onClick={addDocumentRow}>
+                    <Plus size={13} /> {T("Add document", "إضافة مستند", ar)}
+                  </Button>
+                </div>
+                {newDocuments.map((doc, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Select
+                      className="flex-1"
+                      value={doc.documentType}
+                      onChange={(e) => updateDocumentRow(index, { documentType: Number(e.target.value) })}
+                    >
+                      {documentTypes.length > 0 ? (
+                        documentTypes.map((dt: any) => (
+                          <option key={dt.id ?? dt.value} value={dt.id ?? dt.value}>
+                            {ar ? dt.nameAr || dt.name : dt.nameEn || dt.name}
+                          </option>
+                        ))
+                      ) : (
+                        [1, 2, 3, 4].map((n) => (
+                          <option key={n} value={n}>{T(`Document type ${n}`, `نوع المستند ${n}`, ar)}</option>
+                        ))
+                      )}
+                    </Select>
+                    <input
+                      type="file"
+                      className="flex-1 mk-body-sm text-mk-ink-700"
+                      onChange={(e) => updateDocumentRow(index, { file: e.target.files?.[0] ?? null })}
+                    />
+                    <IconButton size="sm" variant="ghost" onClick={() => removeDocumentRow(index)}>
+                      <Trash2 size={14} className="text-mk-danger" />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
+
+          <DrawerFooter className="mt-4 pt-4 border-t border-mk-border justify-stretch">
+            <Button variant="outline" onClick={() => setShowAdd(false)}>
+              {T("Cancel", "إلغاء", ar)}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={isCustomerFormInvalid() || uploadingDocuments}
+              onClick={handleAdd}
+              className={`flex-1 ${added ? "bg-mk-mint-500 hover:bg-mk-mint-500" : ""}`}
+            >
+              {added ? (<><CheckCircle size={16} /> {T("Added!", "تمت الإضافة!", ar)}</>) : (<><UserPlus size={16} /> {T("Add Customer", "إضافة عميل", ar)}</>)}
+            </Button>
+          </DrawerFooter>
+        </div>
       </Drawer>
 
       {/* Delete confirmation modal */}
       <Modal
-        open={deleteModalOpen}
-        onClose={closeDeleteModal}
+        open={!!customerToDelete}
+        onClose={() => setCustomerToDelete(null)}
         variant="centered"
         size="sm"
-        title={T("Delete client?", "حذف العميل؟", ar)}
+        title={T("Delete customer?", "حذف العميل؟", ar)}
       >
         <div className="flex flex-col gap-5 p-2">
           <p className="mk-body text-mk-ink-700">
             {T(
-              `Are you sure you want to delete ${clientToDelete?.name || clientToDelete?.nameAr || "this client"}? This action cannot be undone.`,
-              `هل أنت متأكد من حذف ${clientToDelete?.nameAr || clientToDelete?.name || "هذا العميل"}؟ لا يمكن التراجع عن هذا الإجراء.`,
+              `Are you sure you want to delete ${customerToDelete?.name || customerToDelete?.nameAr || "this customer"}? This action cannot be undone.`,
+              `هل أنت متأكد من حذف ${customerToDelete?.nameAr || customerToDelete?.name || "هذا العميل"}؟ لا يمكن التراجع عن هذا الإجراء.`,
               ar
             )}
           </p>
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={closeDeleteModal} disabled={isDeleting}>
+            <Button variant="outline" size="sm" onClick={() => setCustomerToDelete(null)} disabled={isDeleting}>
               {T("Cancel", "إلغاء", ar)}
             </Button>
-            <Button variant="danger" size="sm" onClick={handleDeleteClient} disabled={isDeleting}>
+            <Button variant="danger" size="sm" onClick={handleDeleteCustomer} disabled={isDeleting}>
               {isDeleting ? <><Loader2 size={13} className="animate-spin" /> {T("Deleting...", "جارٍ الحذف...", ar)}</> : <><Trash2 size={13} /> {T("Delete", "حذف", ar)}</>}
             </Button>
           </div>
@@ -506,4 +719,3 @@ export default function ClientsPage() {
     </div>
   );
 }
-

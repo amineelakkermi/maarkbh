@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { Avatar, Badge, HijriDatePicker, Button, Input, Select, Drawer, DrawerHeader, DrawerFooter, IconButton, Modal, useToast } from "@/components/ui";
 import { useAdmin } from "@/contexts/AdminContext";
-import { customerService, attachmentService, countryService } from "@/lib/api-services";
+import { customerService, attachmentService, countryService, customerEvents } from "@/lib/api-services";
 import { formatPhone, normalizeKycStatus } from "@/lib/formatting";
 import { CLIENTS } from "@/lib/data";
 
@@ -92,7 +92,7 @@ export default function CustomerListPage() {
           phone: item.phoneNumber || "",
           email: item.email,
           idType,
-          idNumber: item.idNumber || item.identityNumber || item.national?.beneficiaryIdNumber || item.residence?.beneficiaryIdNumber || item.visitor?.passportNumber || item.gulf?.beneficiaryIdNumber || "",
+          idNumber: item.beneficiaryIdNumber || item.visitor?.passportNumber || item.visitor?.idNumber || "",
           idExpiryDate: item.idExpiryDate || item.identityExpiryDate || item.national?.identityExpiryDate || item.residence?.identityExpiryDate || item.visitor?.identityExpiryDate || item.gulf?.identityExpiryDate,
           birthDate: item.birthDate || item.national?.birthDate || item.residence?.birthDate || item.visitor?.birthDate || item.gulf?.birthDate,
           hijriBirthDate: item.national?.hijriBirthDate ?? item.residence?.hijriBirthDate,
@@ -108,7 +108,7 @@ export default function CustomerListPage() {
           kycStatus: normalizeKycStatus(item.verificationStatus),
           yakeenStatus: item.yakeenStatus === 1 ? "verified" : item.yakeenStatus === 2 ? "pending" : "not_verified",
           blacklisted: item.isBlacklisted || false,
-          joinDate: item.creationTime ? new Date(item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+          joinDate: (item.joinedAt || item.creationTime) ? new Date(item.joinedAt || item.creationTime).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
           history: [],
           debts: [],
         };
@@ -128,6 +128,8 @@ export default function CustomerListPage() {
 
   useEffect(() => {
     loadCustomers();
+    const unsubscribe = customerEvents.onReload(loadCustomers);
+    return () => unsubscribe();
   }, []);
 
   // Add customer form state
@@ -336,6 +338,7 @@ export default function CustomerListPage() {
       
       // Reload customers after creation
       await loadCustomers();
+      customerEvents.reload();
       
       setShowAdd(false);
       setAdded(false);
@@ -361,6 +364,7 @@ export default function CustomerListPage() {
       await customerService.delete(Number(customerToDelete.id));
       showToast(T("Customer deleted successfully", "تم حذف العميل بنجاح", ar));
       await loadCustomers();
+      customerEvents.reload();
     } catch (err) {
       console.error("Error deleting customer:", err);
       showToast(T("Failed to delete customer", "فشل في حذف العميل", ar));

@@ -24,6 +24,7 @@ const NAV_SECTIONS = [
     title: "Customer",
     titleAr: "العملاء",
     items: [
+      { href: "/customers", icon: Users, label: "Client List", labelAr: "قائمة العملاء" },
       { href: "/kyc-queue", icon: ShieldCheck, label: "KYC Queue", labelAr: "مراجعة الهوية", badge: 4 },
       { href: "/late-returns", icon: ClockAlert, label: "Late Returns", labelAr: "الإرجاع المتأخر", badge: 2 },
       { href: "/blacklist", icon: Ban, label: "Blacklist", labelAr: "القائمة السوداء" },

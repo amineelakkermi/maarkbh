@@ -973,6 +973,48 @@ export const tenantRoleService = {
   },
 };
 
+// ─── Customer Cross-Tab Sync ───────────────────────────────────
+
+const RELOAD_KEY = 'mk-customers-reload';
+
+export const customerEvents = {
+  /**
+   * Notify all listening tabs/pages that customer data should reload.
+   * Call this after create, update, delete, verify or reject.
+   */
+  reload() {
+    if (typeof window === 'undefined') return;
+    const now = Date.now().toString();
+    try {
+      localStorage.setItem(RELOAD_KEY, now);
+    } catch {
+      // ignore storage errors (private mode, etc.)
+    }
+    window.dispatchEvent(new CustomEvent('customers:reload'));
+  },
+
+  /**
+   * Subscribe to reload events from any tab or the same page.
+   * Returns an unsubscribe function.
+   */
+  onReload(callback: () => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+
+    const storageHandler = (e: StorageEvent) => {
+      if (e.key === RELOAD_KEY) callback();
+    };
+    const customHandler = () => callback();
+
+    window.addEventListener('storage', storageHandler);
+    window.addEventListener('customers:reload', customHandler);
+
+    return () => {
+      window.removeEventListener('storage', storageHandler);
+      window.removeEventListener('customers:reload', customHandler);
+    };
+  },
+};
+
 // ─── Lookup Service ─────────────────────────────────────────────
 
 export const lookupService = {

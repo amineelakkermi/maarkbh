@@ -306,11 +306,18 @@ export default function FleetPage() {
 
   const visible = vehicles.filter((c) => {
     const matchTab = tab === "all" || c.status === tab;
-    const matchSearch =
-      !search ||
-      c.name.includes(search) ||
-      c.plate.includes(search) ||
-      (c.customer?.includes(search) ?? false);
+    const needle = search.trim().toLowerCase();
+    const haystack = [
+      c.name,
+      c.plate,
+      c.make,
+      c.model,
+      c.customer,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const matchSearch = !needle || haystack.includes(needle);
     return matchTab && matchSearch;
   });
 

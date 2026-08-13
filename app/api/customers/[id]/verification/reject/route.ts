@@ -27,7 +27,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             return NextResponse.json({ error: errorData?.error || 'Failed to reject customer verification' }, { status: response.status });
         }
 
-        const data = await response.json();
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            return new NextResponse(null, { status: response.status });
+        }
+
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
         return NextResponse.json(data);
 
     } catch(error){

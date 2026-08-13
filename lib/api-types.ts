@@ -111,6 +111,10 @@ export interface UpdateCustomerRequest {
 
 export interface CustomerSearchRequest {
   search?: string;
+  identityType?: IdentityType;
+  verificationStatus?: VerificationStatus;
+  isBlacklisted?: boolean;
+  isActive?: boolean;
   pageNumber?: number;
   pageSize?: number;
 }
@@ -170,11 +174,11 @@ export interface CountrySearchRequest {
 export enum VehicleFleetStatus {
   Available = 1,
   Rented = 2,
-  Maintenance = 3,
-  Reserved = 4,
-  Inactive = 5,
-  Draft = 6,
-  Overdue = 7,
+  Overdue = 3,
+  Maintenance = 4,
+  Reserved = 5,
+  Inactive = 6,
+  Draft = 7,
 }
 
 export enum VehicleFuelType {
